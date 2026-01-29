@@ -14,6 +14,7 @@ Requirements:
 import os
 import json
 import torch
+import faiss
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
@@ -86,7 +87,6 @@ class LatinVectorDB:
     """
     
     def __init__(self, embedding_dim: int = 384):
-        import faiss
         self.index = faiss.IndexFlatIP(embedding_dim)  # Inner product (cosine sim with normalized vecs)
         self.passages: List[LatinPassage] = []
         self.embedding_dim = embedding_dim
@@ -100,7 +100,6 @@ class LatinVectorDB:
     
     def search(self, query_embedding: np.ndarray, k: int = 5) -> List[Tuple[LatinPassage, float]]:
         """Search for k most similar passages."""
-        import faiss
         # Normalize query
         query_embedding = query_embedding.reshape(1, -1).astype('float32')
         faiss.normalize_L2(query_embedding)
@@ -115,7 +114,6 @@ class LatinVectorDB:
     
     def save(self, path: str):
         """Save index and passages to disk."""
-        import faiss
         faiss.write_index(self.index, f"{path}.index")
         with open(f"{path}.passages.json", 'w') as f:
             json.dump([
@@ -125,7 +123,6 @@ class LatinVectorDB:
     
     def load(self, path: str):
         """Load index and passages from disk."""
-        import faiss
         self.index = faiss.read_index(f"{path}.index")
         with open(f"{path}.passages.json", 'r') as f:
             data = json.load(f)
