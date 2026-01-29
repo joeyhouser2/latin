@@ -1,0 +1,20 @@
+# Latin RAG + Translation Pipeline
+# Install with: pip install -r requirements.txt
+
+# Core ML
+torch>=2.0.0
+transformers>=4.30.0
+sentence-transformers>=2.2.0
+
+# Vector database
+faiss-cpu>=1.7.4  # Use faiss-gpu if you have CUDA
+
+# Web interface
+gradio>=4.0.0
+
+# Utilities
+numpy>=1.24.0
+accelerate>=0.20.0  # For faster model loading
+
+# Optional: Latin NLP tools
+cltk>=1.1.0  # Classical Language Toolkit (for better tokenization)
