@@ -7,7 +7,7 @@ transformers>=4.30.0
 sentence-transformers>=2.2.0
 
 # Vector database
-faiss-cpu>=1.7.4  # Use faiss-gpu if you have CUDA
+faiss-cpu>=1.7.4  # faiss-gpu requires conda on Windows
 
 # Web interface
 gradio>=4.0.0
@@ -15,6 +15,7 @@ gradio>=4.0.0
 # Utilities
 numpy>=1.24.0
 accelerate>=0.20.0  # For faster model loading
+sentencepiece>=0.1.99  # Required for NLLB tokenizer
 
 # Optional: Latin NLP tools
 cltk>=1.1.0  # Classical Language Toolkit (for better tokenization)
