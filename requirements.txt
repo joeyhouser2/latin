@@ -4,7 +4,9 @@
 # Core ML
 torch>=2.0.0
 transformers>=4.30.0
-sentence-transformers>=2.2.0
+sentence-transformers>=2.2.0  # search embedder + LaBSE for the cross-lingual aligner
+# Note: the LaBSE aligner (training/aligner.py) needs no extra package — it loads
+# sentence-transformers/LaBSE on first use (~1.8GB model download).
 
 # Vector database
 faiss-cpu>=1.7.4  # faiss-gpu requires conda on Windows
@@ -16,6 +18,7 @@ gradio>=4.0.0
 numpy>=1.24.0
 accelerate>=0.20.0  # For faster model loading
 sentencepiece>=0.1.99  # Required for NLLB tokenizer
+requests>=2.28.0  # IIIF downloader + ingestion connectors
 
 # Optional: Latin NLP tools
 cltk>=1.1.0  # Classical Language Toolkit (for better tokenization)

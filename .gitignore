@@ -3,6 +3,19 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Project data artifacts (rebuildable from sources)
+data/*.db
+data/*.faiss
+data/*.index
+data/*.passages.json
+# mined parallel corpora (rebuildable via scripts/mine_parallel.py)
+data/parallel/
+# fine-tuned translation checkpoints (downloaded/retrained; never commit)
+models/
+
+# Local virtualenv
+latinvenv/
+
 # C extensions
 *.so
 
