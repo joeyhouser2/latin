@@ -57,38 +57,197 @@ A complete system for searching Latin texts and translating them to English. Que
 ### Installation
 
 ```bash
-pip install torch transformers sentence-transformers faiss-cpu gradio accelerate numpy
+pip install -r requirements.txt
 ```
 
-### Run the Web Interface
+### Run the Reading Interface
 
 ```bash
-python latin_rag_ui.py
+# 1. Seed the library with a sample medieval text (Einhard's Vita Karoli Magni)
+python scripts/seed_demo.py
+
+# 2. Launch the reader + discovery UI
+python app.py
 # Open http://localhost:7860
 ```
+
+The **Read** tab shows a document with Latin and English side by side, aligned
+sentence by sentence; the **Discover** tab does cross-lingual semantic search
+(query in English or Latin) with filters for language stage and untranslated
+works. Data persists in `data/corpus.db` (text + metadata) and
+`data/index.faiss` (embeddings), both rebuildable from the sources.
+
+> The original RAG demo (`rag_ui.py`) is still present but superseded by `app.py`.
 
 ### Use as a Library
 
 ```python
-from latin_rag_pipeline import LatinRAG
+from pipeline import Library
 
-# Initialize
-rag = LatinRAG()
+lib = Library()  # persists to data/corpus.db + data/index.faiss
 
-# Index your texts
-rag.index_texts([
-    ("Gallia est omnis divisa in partes tres...", "Caesar, De Bello Gallico"),
-    ("Confiteantur tibi, Domine...", "Psalms (Vulgate)"),
-])
+# Add a text: it is sentence-segmented, embedded, and stored
+doc = lib.add_document(
+    "Gallia est omnis divisa in partes tres...",
+    title="De Bello Gallico", author="Caesar",
+    language_stage="classical", has_existing_translation=True,
+)
 
-# Query (in English or Latin)
-results = rag.query("What does Caesar say about Gaul?", k=3)
+# Translate it (fills in English for each segment; cached in the DB)
+lib.translate_document(doc.id)
 
-for r in results:
-    print(f"Source: {r.passage.source}")
-    print(f"Latin: {r.passage.text}")
-    print(f"English: {r.translation}")
+# Read it back, side by side
+for seg in lib.get_document(doc.id).iter_segments():
+    print(seg.latin_text, "->", seg.english_text)
+
+# Cross-lingual semantic search (query in English or Latin)
+for hit in lib.search("what does Caesar say about Gaul?", k=3):
+    print(f"{hit.score:.3f}  {hit.document.author}: {hit.segment.latin_text}")
+
+lib.close()
 ```
+
+---
+
+## Adding Texts: Sources & Connectors
+
+Texts come in through **connectors** — one per source — all driven by a single CLI
+(`scripts/ingest.py`). Each connector turns a source into structured documents
+that are segmented, embedded, and stored. A connector can also *discover* many
+works at once (a category, an index page, a directory).
+
+```bash
+python scripts/ingest.py list          # show available sources
+```
+
+| Source | `name` | Pull one work by… | `--discover` lists… |
+|---|---|---|---|
+| The Latin Library | `latinlibrary` | page URL | works linked from an author/index page |
+| Latin Wikisource | `wikisource` | page title | full-text search results, or a `Categoria:` |
+| **Perseus** (classical Latin canon) | `perseus` | CTS urn / `group.work` | works under a textgroup |
+| **Perseus Greek** (classical Greek canon) | `perseus_greek` | CTS urn / `group.work` | works under a textgroup |
+| **First1KGreek** (post-classical / patristic Greek, 2nd–6th c.) | `first1k_greek` | CTS urn / `group.work` | works under a textgroup |
+| Generic TEI-XML (Patrologia, EpiDoc, CroALa, PTA) | `tei` | XML URL or local path | `.xml` files in a directory |
+| **DigilibLT** (late-antique Latin) | `digiliblt` | `DLT…` id | an author's (`AUT…`) works, or `canone` |
+| **Corpus Corporum** (Patrologia Latina, medieval) | `corpuscorporum` | text idno | text idnos under a corpus idno |
+| **Corpus Thomisticum** (complete Aquinas) | `corpusthomisticum` | page id / URL | work pages from an index |
+| **EDCS** (~542k Latin inscriptions) | `edcs` | search query (one Document per query) | — |
+| Local plain text | `file` | `.txt` path | `.txt` files in a directory |
+
+```bash
+# One work
+python scripts/ingest.py wikisource "Confessiones (ed. Migne)/1" \
+    --author Augustinus --stage late_antique --genre philosophy
+python scripts/ingest.py tei \
+    https://raw.githubusercontent.com/PerseusDL/canonical-latinLit/master/data/phi0448/phi001/phi0448.phi001.perseus-lat2.xml
+
+# Late-antique (DigilibLT) and Patrologia Latina (Corpus Corporum)
+python scripts/ingest.py digiliblt DLT000001 --genre agrimensores
+python scripts/ingest.py corpuscorporum 10821 --stage medieval
+
+# Perseus classical canon (CTS urn or group.work), and Aquinas
+python scripts/ingest.py perseus phi0474.phi013                    # Cicero, In Catilinam
+python scripts/ingest.py perseus urn:cts:latinLit:phi0448.phi001  # Caesar, De bello Gallico
+python scripts/ingest.py corpusthomisticum sth0000
+
+# Ancient Greek (the Greek module) — stored with language=grc, read with a Greek column
+python scripts/ingest.py perseus_greek tlg0020.tlg001             # Hesiod, Theogony
+
+# EDCS inscriptions matching a query (one Document, one segment per inscription)
+python scripts/ingest.py edcs "Augustus"
+python scripts/ingest.py edcs "province=Roma"
+
+# Bulk: discover then ingest
+python scripts/ingest.py wikisource "Beda" --discover --limit 5 --stage medieval
+python scripts/ingest.py latinlibrary https://www.thelatinlibrary.com/aug.html --discover --limit 10
+python scripts/ingest.py digiliblt canone --discover --limit 20           # DigilibLT catalogue
+python scripts/ingest.py corpuscorporum 38 --discover --limit 10          # corpus 38 = Patrologia Latina
+python scripts/ingest.py file ./my_texts --discover
+
+# Optionally translate the first N segments of each doc now (NLLB; slow on CPU)
+python scripts/ingest.py wikisource "..." --translate 20
+```
+
+Metadata flags (`--author`, `--title`, `--century`, `--genre`, `--stage`,
+`--has-translation`) are stored with the work and power the discovery filters.
+
+> **EDCS note:** each inscription becomes its own segment (no sentence-splitting).
+> The connector calls EDCS's JSON API directly with `requests`; Playwright was
+> only used once to *discover* that endpoint, so it is not a runtime dependency.
+> Inscriptions carry heavy epigraphic markup (`Imp(erator)`, `[Aug]ustus`); the
+> display text keeps it, but a markup-stripped copy (`Imperator Augustus`) is what
+> gets embedded, so inscriptions search well. See *Embedding & re-indexing* below.
+
+### Training Era-Specific Translators
+
+Off-the-shelf Latin/Greek MT (NLLB, OPUS-MT) is trained mostly on classical/
+ecclesiastical text and is weak on medieval and late-antique Latin. To improve
+that, you can mine your own parallel corpus and fine-tune an open model — no paid
+API required.
+
+```bash
+# 1. Build the parallel corpus (one-time; pure Python, no GPU)
+python scripts/mine_parallel.py --all --era classical --out data/parallel/perseus_latin.jsonl   # ~15k Latin pairs
+python scripts/mine_parallel.py --all --greek --era ancient --out data/parallel/perseus_greek.jsonl  # ~64k Greek pairs
+python scripts/load_grosenthal.py --out data/parallel/grosenthal.jsonl                          # ~99k Latin pairs (incl. Vulgate)
+
+# 2. Fine-tune NLLB-200 on the Latin pairs (needs a CUDA GPU; see note below)
+python training/finetune.py --data data/parallel/perseus_latin.jsonl data/parallel/grosenthal.jsonl \
+    --out models/nllb-latin
+
+# 3. Done — the reader uses it automatically (see below)
+```
+
+**The reader auto-routes by language.** `Library.translate_document()` picks the
+translator for each document's `language` via `TRANSLATOR_MODELS` in `pipeline.py`:
+a Latin doc uses `models/nllb-latin`, a Greek doc uses `models/nllb-greek-v2`
+(with diacritic-stripping applied to match training), and anything without a
+trained model falls back to stock NLLB. Drop a fine-tuned model into `models/`
+and the "Translate" button starts using it — no code change.
+
+**Quantify a model** against stock on a held-out slice:
+
+```bash
+python scripts/eval_translation.py --data data/parallel/perseus_latin.jsonl data/parallel/grosenthal.jsonl \
+    --lang la --holdout-from 25000 --by-era --model "stock=stock" --model "tuned=models/nllb-latin"
+```
+
+The miner aligns a work's `-lat`/`-grc` edition against its `-eng` edition at the
+deepest CTS citation level they share (`--all` does the whole repo in one git-tree
+call). Each pair is `{src, tgt, citation, src_lang, era, source}`, tagged with
+`era` (`language_stage`). Together the sources give ~114k Latin pairs (classical +
+late-antique via the Vulgate) and ~64k ancient-Greek pairs. Mined corpora live in
+`data/parallel/` and checkpoints in `models/` (both gitignored, rebuildable).
+
+> **GPU note:** `training/finetune.py` is CPU-runnable but impractically slow for
+> the full corpus. Install a CUDA build of PyTorch first
+> (`pip install torch --index-url https://download.pytorch.org/whl/cu121`, matching
+> your CUDA version); the script auto-enables fp16 when a GPU is present.
+
+### Greek Module
+
+Documents carry a `language` field (`la` Latin, `grc` ancient Greek). Greek texts
+are segmented with Greek punctuation (`·`, `;`), stored with `language=grc`, and the
+reader labels the original column "Greek". Use the `perseus_greek` connector for the
+ancient Greek canon.
+
+> The embedding model handles Greek script, so **Greek-query** search is strong, but
+> **English→ancient-Greek** cross-lingual search is weak (a model limitation). High-
+> quality Greek translation is future work (the translator is pluggable).
+
+### Embedding & Re-indexing
+
+Each segment stores the display text plus an optional `embed_text` — a
+markup-stripped copy (editorial brackets removed, letters kept) used for semantic
+search. After changing the embedding/normalization logic, or ingesting older data,
+rebuild the index from the store:
+
+```bash
+python scripts/reindex.py    # backfills embed_text and rebuilds data/index.faiss
+```
+
+**Add your own source:** subclass `Connector` (implement `fetch`, optionally
+`discover`) in `ingest/`, then register it in `ingest/registry.py`.
 
 ---
 
@@ -179,116 +338,48 @@ print(text)
 
 ## Processing IIIF Manuscript Images
 
-Vatican, Bodleian, and other libraries serve images via IIIF. Here's how to download and process them:
+Vatican, Bodleian, and other libraries serve images via IIIF. This repo includes a
+ready-to-use downloader, **`iiif_downloader.py`**, with a command-line interface.
 
-### Download Images from IIIF Manifest
+### Download Images with `iiif_downloader.py`
+
+The script handles IIIF 2.x and 3.x manifests, retries, and rate limiting, and has
+shortcuts for several major repositories (Vatican, Bodleian, BnF Gallica, e-codices).
+
+```bash
+# Download a Vatican manuscript by shelfmark
+python iiif_downloader.py --vatican "Vat.lat.3773" --output vat_lat_3773
+
+# Download from any IIIF manifest URL directly
+python iiif_downloader.py --manifest https://example.com/iiif/manifest.json --output out_dir
+
+# Download the first 10 pages only
+python iiif_downloader.py --vatican "Vat.lat.3773" --output vat_lat_3773 --max 10
+
+# Download at full resolution (slower, larger files)
+python iiif_downloader.py --vatican "Vat.lat.3773" --output vat_lat_3773 --size full
+
+# Other repositories
+python iiif_downloader.py --bodleian "MS. Bodl. 264" --output bodl_264
+python iiif_downloader.py --bnf "ark:/12148/btv1b8432895r" --output bnf_manuscript
+python iiif_downloader.py --ecodices "csg-0390" --output stgallen_390
+
+# Search a few known Vatican manuscripts
+python iiif_downloader.py --search-vatican "Virgil"
+```
+
+Useful flags: `--max` (page limit), `--start` (skip pages), `--size` (IIIF size, default
+`1000,`), and `--delay` (seconds between requests). Images are saved as
+`page_NNNN.jpg` and the manifest is saved alongside them as `manifest.json`.
+
+### Use the Downloader as a Library
 
 ```python
-"""
-Download manuscript images from IIIF manifests (Vatican, Bodleian, etc.)
-"""
+from iiif_downloader import IIIFDownloader, get_vatican_manifest
 
-import json
-import requests
-from pathlib import Path
-from urllib.parse import urljoin
-import time
-
-def download_iiif_manifest(manifest_url: str, output_dir: str, max_images: int = None):
-    """
-    Download all images from an IIIF manifest.
-    
-    Args:
-        manifest_url: URL to the IIIF manifest JSON
-        output_dir: Directory to save images
-        max_images: Optional limit on number of images
-    """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Fetch manifest
-    print(f"Fetching manifest: {manifest_url}")
-    response = requests.get(manifest_url)
-    manifest = response.json()
-    
-    # Extract canvases (pages)
-    sequences = manifest.get("sequences", [])
-    if not sequences:
-        print("No sequences found in manifest")
-        return
-    
-    canvases = sequences[0].get("canvases", [])
-    print(f"Found {len(canvases)} pages")
-    
-    # Download each image
-    for i, canvas in enumerate(canvases):
-        if max_images and i >= max_images:
-            break
-        
-        # Get image URL
-        images = canvas.get("images", [])
-        if not images:
-            continue
-        
-        resource = images[0].get("resource", {})
-        
-        # Handle different IIIF versions
-        if "@id" in resource:
-            # IIIF 2.x
-            base_url = resource["@id"]
-            if "service" in resource:
-                service = resource["service"]
-                service_id = service.get("@id", service.get("id", ""))
-                # Construct full-size image URL
-                image_url = f"{service_id}/full/full/0/default.jpg"
-            else:
-                image_url = base_url
-        else:
-            # IIIF 3.x
-            image_url = resource.get("id", "")
-        
-        # For Vatican specifically, construct the URL
-        if "vatlib.it" in image_url and not image_url.endswith(".jpg"):
-            image_url = f"{image_url}/full/1000,/0/default.jpg"
-        
-        # Download
-        filename = output_path / f"page_{i:04d}.jpg"
-        print(f"Downloading {i+1}/{len(canvases)}: {filename.name}")
-        
-        try:
-            img_response = requests.get(image_url, timeout=30)
-            if img_response.status_code == 200:
-                filename.write_bytes(img_response.content)
-            else:
-                print(f"  Failed: HTTP {img_response.status_code}")
-        except Exception as e:
-            print(f"  Error: {e}")
-        
-        # Be polite to servers
-        time.sleep(0.5)
-    
-    print(f"Downloaded to {output_dir}")
-
-
-def get_vatican_manifest_url(shelfmark: str) -> str:
-    """
-    Construct Vatican IIIF manifest URL from shelfmark.
-    
-    Example: "Vat.lat.3773" -> manifest URL
-    """
-    # Vatican format: MSS_Vat.lat.3773
-    formatted = f"MSS_{shelfmark.replace(' ', '.')}"
-    return f"https://digi.vatlib.it/iiif/{formatted}/manifest.json"
-
-
-# Example usage:
-if __name__ == "__main__":
-    # Vatican manuscript
-    manifest_url = get_vatican_manifest_url("Vat.lat.3773")
-    download_iiif_manifest(manifest_url, "manuscript_images/vat_lat_3773", max_images=10)
-    
-    # Or use any IIIF manifest URL directly
-    # download_iiif_manifest("https://example.com/iiif/manifest.json", "output_dir")
+downloader = IIIFDownloader(delay=0.5)
+manifest_url = get_vatican_manifest("Vat.lat.3773")
+downloader.download_manifest(manifest_url, "vat_lat_3773", max_images=10)
 ```
 
 ### Complete Manuscript-to-RAG Pipeline
@@ -569,7 +660,8 @@ def translate_with_claude(latin_text: str) -> str:
 ```
 latin-rag/
 ├── latin_rag_pipeline.py   # Core RAG + translation logic
-├── latin_rag_ui.py         # Gradio web interface
+├── rag_ui.py               # Gradio web interface
+├── iiif_downloader.py      # IIIF manuscript image downloader (CLI)
 ├── requirements.txt        # Dependencies
 ├── README.md               # This file
 │
