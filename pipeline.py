@@ -34,6 +34,9 @@ TRANSLATOR_MODELS = {
     # Patristic / late-antique Greek: prefer the era-specific model, then the
     # general Greek models, then stock NLLB.
     ("grc", "late_antique"): [("models/nllb-greek-v3", "ell_Grek", True)],
+    # Homeric / archaic Greek (Workstream B). Inert until the model is trained;
+    # falls back to the general Greek default below.
+    ("grc", "archaic"): [("models/nllb-greek-archaic", "ell_Grek", True)],
 }
 STOCK_SRC = {"la": "lat_Latn", "grc": "ell_Grek"}
 

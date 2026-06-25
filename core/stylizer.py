@@ -109,6 +109,24 @@ PRESETS = {
             "{meta}Literal translation:\n{literal}"
         ),
     ),
+    # Reverse direction, used to BUILD training data (not for the reader): turn
+    # authentic 19th-c. translation prose into plain modern English, yielding
+    # (modern, victorian) pairs to distill a standalone Victorian stylizer model.
+    # Modernizing is a lower-hallucination LLM task than inventing archaism.
+    "modernize": StylePreset(
+        name="modernize",
+        description="Plain contemporary English (for building (modern, victorian) pairs).",
+        system=(
+            "You rewrite ornate 19th-century English prose into plain, clear, "
+            "contemporary English."
+        ),
+        instruction=(
+            "Rewrite the following passage in plain modern English: everyday "
+            "vocabulary, straightforward sentence structure, no archaic words or "
+            "inversions. Preserve the exact meaning. " + _FAITHFUL + "\n\n"
+            "{meta}Passage:\n{literal}"
+        ),
+    ),
 }
 
 DEFAULT_PRESET = "victorian_prose"
@@ -312,3 +330,64 @@ class LocalLLMStylizer(Stylizer):
                 torch.cuda.empty_cache()
         except Exception:
             pass
+
+
+class Seq2SeqStylizer(Stylizer):
+    """A trained, monolingual English->English style model (T5/BART-family).
+
+    Workstream C: a small fine-tuned seq2seq that rewrites a literal English crib
+    into Victorian register directly, with no prompt and no big LLM at inference
+    (fast, offline). Trained on (modern, victorian) pairs distilled by the LLM via
+    the 'modernize' preset (see scripts/build_victorian_corpus.py).
+
+    The style is baked into the weights, so presets/context are ignored and each
+    unit is rewritten independently (alignment is trivially preserved). Heavy deps
+    are imported lazily, like the other backends."""
+
+    def __init__(self, model_name: str, max_length: int = 256, num_beams: int = 4,
+                 prefix: str = ""):
+        self.model_name = model_name
+        self.max_length = max_length
+        self.num_beams = num_beams
+        self.prefix = prefix          # e.g. "victorianize: " for a T5 task prefix
+        self._tokenizer = None
+        self._model = None
+        self._device = None
+
+    def _ensure_loaded(self):
+        if self._model is not None:
+            return
+        import torch
+        from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+        print(f"Loading stylizer seq2seq model: {self.model_name}")
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self._model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._model.to(self._device)
+
+    def stylize_units(self, units, preset=DEFAULT_PRESET, context=None):
+        """Rewrite each unit's literal English through the trained model (batched).
+        preset/context are ignored — the register is in the weights."""
+        units = list(units)
+        if not units:
+            return []
+        return self._run([u.literal for u in units])
+
+    def _run(self, texts, batch_size: int = 16):
+        import torch
+        self._ensure_loaded()
+        out = []
+        for i in range(0, len(texts), batch_size):
+            batch = [self.prefix + (t or "") for t in texts[i:i + batch_size]]
+            inputs = self._tokenizer(batch, return_tensors="pt", padding=True,
+                                     truncation=True, max_length=self.max_length)
+            inputs = {k: v.to(self._device) for k, v in inputs.items()}
+            with torch.no_grad():
+                gen = self._model.generate(**inputs, max_length=self.max_length,
+                                           num_beams=self.num_beams, early_stopping=True)
+            out.extend(_clean(s) for s in
+                       self._tokenizer.batch_decode(gen, skip_special_tokens=True))
+        return out
+
+    def _generate(self, system: str, user: str) -> str:  # ABC contract; single unit
+        return self._run([user])[0]

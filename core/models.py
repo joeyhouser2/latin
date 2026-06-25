@@ -16,7 +16,10 @@ from typing import Optional, List
 
 
 # Coarse language stage, used both as metadata and as a discovery filter.
-LANGUAGE_STAGES = ("classical", "late_antique", "medieval", "early_modern", "ancient", "unknown")
+# "archaic" = Homeric/early Greek (and archaic Latin), a dialect our Greek models
+# never trained on; see docs/roadmap-verse-stylizer.md.
+LANGUAGE_STAGES = ("archaic", "classical", "late_antique", "medieval",
+                   "early_modern", "ancient", "unknown")
 
 # Primary language of a work's text (ISO-ish). "la" = Latin, "grc" = ancient Greek.
 LANGUAGES = {"la": "Latin", "grc": "Greek"}
