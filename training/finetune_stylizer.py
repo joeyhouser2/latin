@@ -105,7 +105,7 @@ def main():
         generation_max_length=args.max_length,
         group_by_length=True,
         logging_steps=50,
-        fp16=torch.cuda.is_available(),
+        bf16=torch.cuda.is_available(),   # T5 is unstable in fp16 (NaN); bf16 is safe on Ada
         report_to=[],
     )
     trainer = Seq2SeqTrainer(

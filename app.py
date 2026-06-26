@@ -141,12 +141,24 @@ STYLE_PRESETS = {
     "Heroic couplets": "verse_couplet",
 }
 
+# Backend label -> engine. "t5" is the trained fast/offline Victorian model
+# (register baked in, so it ignores the preset); "llm" is the prompted instruct
+# model (richer, slower, honors any preset incl. verse).
+STYLE_BACKENDS = {
+    "LLM (rich)": "llm",
+    "Fast T5 (Victorian)": "t5",
+}
 
-def stylize_and_render(doc_id: Optional[int], preset_label: str) -> str:
-    """Stylize the document with the chosen preset, then show the Stylized view."""
+
+def stylize_and_render(doc_id: Optional[int], preset_label: str, backend_label: str) -> str:
+    """Stylize the document with the chosen backend/preset, then show the Stylized view."""
     if not doc_id:
         return render_reader(doc_id, "Stylized")
-    get_library().stylize_document(int(doc_id), STYLE_PRESETS.get(preset_label, "victorian_prose"))
+    get_library().stylize_document(
+        int(doc_id),
+        STYLE_PRESETS.get(preset_label, "victorian_prose"),
+        backend=STYLE_BACKENDS.get(backend_label, "llm"),
+    )
     return render_reader(doc_id, "Stylized")
 
 
@@ -214,6 +226,10 @@ def build_interface():
                     label="Style preset", choices=list(STYLE_PRESETS),
                     value="Victorian prose", scale=1,
                 )
+                backend_dropdown = gr.Dropdown(
+                    label="Engine", choices=list(STYLE_BACKENDS),
+                    value="LLM (rich)", scale=1,
+                )
                 stylize_btn = gr.Button("Stylize", scale=1)
                 meter_dropdown = gr.Dropdown(
                     label="Metre", choices=["hexameter", "pentameter", "elegiac"],
@@ -225,7 +241,8 @@ def build_interface():
             doc_dropdown.change(render_reader, [doc_dropdown, view_radio], reader_html)
             view_radio.change(render_reader, [doc_dropdown, view_radio], reader_html)
             translate_btn.click(translate_and_render, [doc_dropdown, view_radio], reader_html)
-            stylize_btn.click(stylize_and_render, [doc_dropdown, preset_dropdown], reader_html)
+            stylize_btn.click(stylize_and_render,
+                              [doc_dropdown, preset_dropdown, backend_dropdown], reader_html)
             scan_btn.click(scan_and_render, [doc_dropdown, meter_dropdown, view_radio], reader_html)
             refresh_btn.click(
                 lambda: gr.update(choices=document_choices()), None, doc_dropdown

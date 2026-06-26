@@ -15,7 +15,7 @@ from core.store import Store
 from core.embedder import Embedder
 from core.vectorstore import VectorStore
 from core.translator import Translator, NLLBTranslator
-from core.stylizer import Stylizer, LocalLLMStylizer, StyleUnit, PRESETS
+from core.stylizer import Stylizer, LocalLLMStylizer, Seq2SeqStylizer, StyleUnit, PRESETS
 from core.scansion import scan_lines
 from core.segmenter import segment_text
 from core.normalize import embedding_text_for, strip_greek_diacritics
@@ -40,6 +40,10 @@ TRANSLATOR_MODELS = {
 }
 STOCK_SRC = {"la": "lat_Latn", "grc": "ell_Grek"}
 
+# Stylizer backends: "llm" = prompted local instruct model (rich, slow, all presets);
+# "t5" = the trained fast/offline Victorian model (register baked in, victorian only).
+VICTORIAN_T5_DIR = "models/stylizer-victorian"
+
 
 class Library:
     def __init__(
@@ -58,7 +62,8 @@ class Library:
         self.vectors.load(index_path)
         self.translator = translator  # explicit override; else routed per language
         self._lang_translators: dict = {}   # language -> Translator (lazy)
-        self.stylizer = stylizer  # explicit override; else lazily built on demand
+        self.stylizer = stylizer  # explicit override; else lazily built per backend
+        self._stylizers: dict = {}   # backend -> Stylizer (lazy)
         self.search_service = SearchService(self.store, self.embedder, self.vectors)
 
     # -- ingestion -----------------------------------------------------------
@@ -204,24 +209,43 @@ class Library:
 
     # -- stylize (post-translation register / verse) -------------------------
 
-    def _ensure_stylizer(self) -> Stylizer:
-        if self.stylizer is None:
-            self.stylizer = LocalLLMStylizer()
-        return self.stylizer
+    def _stylizer_for(self, backend: str = "llm") -> Stylizer:
+        """Return the stylizer for a backend: an explicit override if set, else the
+        prompted LLM ("llm") or the trained fast Victorian model ("t5", falling back
+        to the LLM if the model dir is absent)."""
+        if self.stylizer is not None:
+            return self.stylizer
+        if backend not in self._stylizers:
+            self._stylizers[backend] = self._build_stylizer(backend)
+        return self._stylizers[backend]
 
-    def stylize_document(self, doc_id: int, preset: str = "victorian_prose") -> int:
+    @staticmethod
+    def _build_stylizer(backend: str) -> Stylizer:
+        if backend == "t5":
+            if os.path.isfile(os.path.join(VICTORIAN_T5_DIR, "model.safetensors")):
+                print(f"Using trained Victorian stylizer: {VICTORIAN_T5_DIR}")
+                return Seq2SeqStylizer(model_name=VICTORIAN_T5_DIR, prefix="victorianize: ")
+            print(f"No trained stylizer at {VICTORIAN_T5_DIR}; falling back to LLM.")
+        return LocalLLMStylizer()
+
+    def stylize_document(self, doc_id: int, preset: str = "victorian_prose",
+                         backend: str = "llm") -> int:
         """Rewrite a document's literal translations into ``preset``'s register.
 
-        Stylizes section by section (the whole section is one passage, for prose
-        flow / verse coherence) over already-translated segments, storing the
-        result in ``english_styled`` without touching the literal ``english_text``.
-        Returns the number of segments stylized."""
+        ``backend`` picks the engine: "llm" (prompted, rich, honors any preset) or
+        "t5" (trained fast/offline Victorian model — register is baked in, so
+        ``preset`` is ignored and treated as victorian_prose). Stylizes section by
+        section over already-translated segments, storing the result in
+        ``english_styled`` without touching the literal ``english_text``. Returns the
+        number of segments stylized."""
         if preset not in PRESETS:
             raise ValueError(f"unknown preset {preset!r}; choose from {sorted(PRESETS)}")
         doc = self.store.get_document(doc_id)
         if doc is None:
             return 0
-        stylizer = self._ensure_stylizer()
+        stylizer = self._stylizer_for(backend)
+        if backend == "t5":
+            preset = "victorian_prose"   # the trained model's register; label accordingly
         context = {
             "source_lang": doc.language_name,
             "author": doc.author,
