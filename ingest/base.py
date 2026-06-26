@@ -74,5 +74,6 @@ class Connector(ABC):
             shelfmark=meta.get("shelfmark"),
             license=meta.get("license"),
             has_existing_translation=meta.get("has_existing_translation", False),
+            translation_status=meta.get("translation_status", "unknown"),
             sections=sections,
         )

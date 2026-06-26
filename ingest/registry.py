@@ -18,6 +18,7 @@ from .corpus_corporum import CorpusCorporumConnector
 from .edcs import EDCSConnector
 from .corpus_thomisticum import CorpusThomisticumConnector
 from .perseus import PerseusConnector, GreekPerseusConnector, First1KGreekConnector
+from .mgh import MGHConnector
 
 
 _REGISTRY: Dict[str, Callable[[], Connector]] = {
@@ -32,6 +33,7 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     PerseusConnector.name: PerseusConnector,
     GreekPerseusConnector.name: GreekPerseusConnector,
     First1KGreekConnector.name: First1KGreekConnector,
+    MGHConnector.name: MGHConnector,
 }
 
 

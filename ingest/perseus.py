@@ -25,6 +25,7 @@ import requests
 
 from .base import Connector, RawWork
 from .tei import TEIConnector
+from .translation_status import has_parallel_english, TRANSLATED, UNKNOWN
 
 
 class PerseusConnector(Connector):
@@ -50,7 +51,10 @@ class PerseusConnector(Connector):
         edition = self._pick_edition(files)
         if edition is None:
             raise ValueError(f"No {self.EDITION_TAG} edition in {group}/{work}: {files}")
-        has_eng = any(re.search(r"-eng\d*\.xml$", f) for f in files)
+        # A sibling -eng edition is near-certain proof a translation exists; its
+        # absence is only weak evidence, so we stay at "unknown" rather than
+        # claiming "untranslated".
+        has_eng = has_parallel_english(files)
 
         raw = (f"https://raw.githubusercontent.com/{self.REPO}/master/"
                f"data/{group}/{work}/{edition}")
@@ -63,6 +67,7 @@ class PerseusConnector(Connector):
             "language": self.LANGUAGE,
             "license": "Perseus / CC BY-SA",
             "has_existing_translation": has_eng,
+            "translation_status": TRANSLATED if has_eng else UNKNOWN,
         }
         meta.update(meta_overrides)
         return self._tei.parse_xml(resp.content, label=f"{group}.{work}", **meta)

@@ -79,6 +79,7 @@ class Document:
     shelfmark: Optional[str] = None         # manuscript shelfmark, if any
     license: Optional[str] = None
     has_existing_translation: bool = False  # is a known English translation already published?
+    translation_status: str = "unknown"     # "translated" | "untranslated" | "unknown" (see ingest.translation_status)
     sections: List[Section] = field(default_factory=list)
     id: Optional[int] = None
 

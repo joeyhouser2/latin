@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS documents (
     source                   TEXT,
     shelfmark                TEXT,
     license                  TEXT,
-    has_existing_translation INTEGER NOT NULL DEFAULT 0
+    has_existing_translation INTEGER NOT NULL DEFAULT 0,
+    translation_status       TEXT NOT NULL DEFAULT 'unknown'
 );
 
 CREATE TABLE IF NOT EXISTS sections (
@@ -80,6 +81,10 @@ class Store:
         if "language" not in doc_cols:
             self.conn.execute(
                 "ALTER TABLE documents ADD COLUMN language TEXT NOT NULL DEFAULT 'la'")
+        if "translation_status" not in doc_cols:
+            self.conn.execute(
+                "ALTER TABLE documents ADD COLUMN translation_status "
+                "TEXT NOT NULL DEFAULT 'unknown'")
 
     # -- write ---------------------------------------------------------------
 
@@ -89,11 +94,11 @@ class Store:
         cur.execute(
             """INSERT INTO documents
                (title, author, century, genre, language, language_stage, source,
-                shelfmark, license, has_existing_translation)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                shelfmark, license, has_existing_translation, translation_status)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (doc.title, doc.author, doc.century, doc.genre, doc.language,
              doc.language_stage, doc.source, doc.shelfmark, doc.license,
-             int(doc.has_existing_translation)),
+             int(doc.has_existing_translation), doc.translation_status),
         )
         doc.id = cur.lastrowid
 
@@ -231,6 +236,8 @@ class Store:
             language_stage=row["language_stage"], source=row["source"],
             shelfmark=row["shelfmark"], license=row["license"],
             has_existing_translation=bool(row["has_existing_translation"]),
+            translation_status=(row["translation_status"]
+                                if "translation_status" in keys else "unknown"),
         )
 
     @staticmethod
