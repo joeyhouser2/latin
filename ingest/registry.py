@@ -17,8 +17,10 @@ from .digiliblt import DigilibLTConnector
 from .corpus_corporum import CorpusCorporumConnector
 from .edcs import EDCSConnector
 from .corpus_thomisticum import CorpusThomisticumConnector
-from .perseus import PerseusConnector, GreekPerseusConnector, First1KGreekConnector
+from .perseus import (PerseusConnector, GreekPerseusConnector,
+                      First1KGreekConnector, PTAConnector)
 from .mgh import MGHConnector
+from .pg_corpus import PGCorpusConnector
 
 
 _REGISTRY: Dict[str, Callable[[], Connector]] = {
@@ -33,7 +35,9 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     PerseusConnector.name: PerseusConnector,
     GreekPerseusConnector.name: GreekPerseusConnector,
     First1KGreekConnector.name: First1KGreekConnector,
+    PTAConnector.name: PTAConnector,
     MGHConnector.name: MGHConnector,
+    PGCorpusConnector.name: PGCorpusConnector,
 }
 
 

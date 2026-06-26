@@ -34,6 +34,8 @@ class PerseusConnector(Connector):
     EDITION_TAG = "lat"          # pick the *-lat*.xml edition
     DEFAULT_STAGE = "classical"
     LANGUAGE = "la"
+    SOURCE_LABEL = "Perseus"     # stamped as source "<label> (group.work)"
+    LICENSE = "Perseus / CC BY-SA"
 
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
@@ -62,10 +64,10 @@ class PerseusConnector(Connector):
         resp.raise_for_status()
 
         meta = {
-            "source": f"Perseus ({group}.{work})",
+            "source": f"{self.SOURCE_LABEL} ({group}.{work})",
             "language_stage": self.DEFAULT_STAGE,
             "language": self.LANGUAGE,
-            "license": "Perseus / CC BY-SA",
+            "license": self.LICENSE,
             "has_existing_translation": has_eng,
             "translation_status": TRANSLATED if has_eng else UNKNOWN,
         }
@@ -125,3 +127,23 @@ class First1KGreekConnector(PerseusConnector):
     EDITION_TAG = "grc"
     DEFAULT_STAGE = "late_antique"
     LANGUAGE = "grc"
+
+
+class PTAConnector(PerseusConnector):
+    """Patristic Text Archive (BBAW) — late-antique / Byzantine Christian Greek
+    (and some Latin) editions, CapiTainS/CTS-structured TEI P5 on GitHub exactly
+    like First1KGreek, so it reuses the Perseus fetch/discover machinery.
+
+    Picks the normalized Greek edition (``pta-grc1.xml``); manuscript-witness
+    files (``pta-MsXX``) and the German translations (``pta-deuXX``) are ignored
+    by the ``-grc`` edition filter. Most works carry a German but NOT an English
+    translation, so they land as translation_status "unknown" — exactly the
+    English-translation-gap material this library targets.
+    """
+    name = "pta"
+    REPO = "PatristicTextArchive/pta_data"
+    EDITION_TAG = "grc"
+    DEFAULT_STAGE = "late_antique"
+    LANGUAGE = "grc"
+    SOURCE_LABEL = "PTA"
+    LICENSE = "CC BY-SA 4.0 (PTA, BBAW)"
