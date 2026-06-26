@@ -50,7 +50,15 @@ class NLLBTranslator(Translator):
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
         print(f"Loading translation model: {self.model_name}")
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, src_lang=self.src_lang)
+        try:
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, src_lang=self.src_lang)
+        except AttributeError:
+            # transformers 5.0.0's AutoTokenizer cannot resolve the NLLB/m2m_100
+            # tokenizer class (saved as "TokenizersBackend") and raises
+            # AttributeError deep in auto-resolution — for the stock model too.
+            # NLLB-derived models share the NLLB tokenizer, so load it directly.
+            from transformers import NllbTokenizerFast
+            self._tokenizer = NllbTokenizerFast.from_pretrained(self.model_name, src_lang=self.src_lang)
         self._model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model.to(self._device)
