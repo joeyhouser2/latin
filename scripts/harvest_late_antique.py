@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 
@@ -74,6 +75,20 @@ CURATED = [
     ("mgh", "bsb00000827", 7, "Aldhelmus",         "Opera"),
     ("mgh", "bsb00000749", 7, "Anon. / Fredegar",  "Fredegarii Chronica; Vitae sanctorum"),
     ("mgh", "bsb00000750", 7, "Anon.",             "Passiones vitaeque sanctorum aevi Merovingici (I)"),
+    # --- Greek: Patristic Text Archive (pta), late-antique (stage late_antique)
+    # CapiTainS TEI; most works have a German but NO English translation -> the
+    # English-gap material this library targets (translation_status "unknown").
+    ("pta", "pta0013.pta003", 4, "Amphilochius of Iconium", "Epistula synodalis"),
+    ("pta", "pta0001.pta001", 5, "Severian of Gabala",      "De fide et lege naturae"),
+    ("pta", "pta0001.pta002", 5, "Severian of Gabala",      "De paenitentia et compunctione"),
+    ("pta", "pta0003.pta007", 4, "Eusebius of Caesarea",    "Contra Marcellum"),
+    ("pta", "pta0003.pta009", 4, "Eusebius of Caesarea",    "De ecclesiastica theologia"),
+    ("pta", "pta0004.pta003", 5, "Theodoret of Cyrrhus",    "Historia ecclesiastica"),
+    ("pta", "pta0006.pta001", 5, "Hesychius of Jerusalem",  "Commentarius magnus in Psalmos"),
+    # --- Greek: Patrologia Graeca Corpus (pg_corpus), Byzantine OCR ------------
+    # Whole PG volumes — LARGE; raise --max-chars (e.g. 3_000_000) to keep them.
+    ("pg_corpus", "PG003", 6, "Ps.-Dionysius Areopagita", "Corpus Areopagiticum (PG vol. 3)"),
+    ("pg_corpus", "PG101", 9, "Photius",                   "Opera (PG vol. 101)"),
 ]
 
 
@@ -82,9 +97,20 @@ def expected_source(src: str, ident: str) -> str | None:
     works already in the library without re-fetching them."""
     if src == "digiliblt":
         return f"DigilibLT ({ident})"
-    if src in ("first1k_greek", "perseus", "perseus_greek"):
+    if src in ("first1k_greek", "perseus", "perseus_greek", "pta"):
+        label = "PTA" if src == "pta" else "Perseus"
         gw = ident.split(":")[-1].replace("/", ".").split(".")
-        return f"Perseus ({gw[0]}.{gw[1]})"
+        return f"{label} ({gw[0]}.{gw[1]})"
+    if src == "mgh":
+        m = re.search(r"(bsb\d+)", ident, re.IGNORECASE)
+        return f"MGH ({m.group(1).lower()})" if m else None
+    if src == "pg_corpus":
+        m = re.search(r"PG(\d+(?:_\d+)?)", ident, re.IGNORECASE)
+        if not m:
+            return None
+        head, _, tail = m.group(1).partition("_")
+        vol = f"PG{int(head):03d}" + (f"_{tail}" if tail else "")
+        return f"PG Corpus ({vol})"
     return None
 
 
@@ -98,7 +124,13 @@ def main():
     ap.add_argument("--cap-segments", type=int, default=0,
                     help="per-doc safety cap on segments translated (0 = no cap)")
     ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--source", default="",
+                    help="comma-separated connector names to limit the run "
+                         "(e.g. 'pta,pg_corpus' to pull only the Byzantine Greek)")
     args = ap.parse_args()
+
+    src_filter = {s.strip() for s in args.source.split(",") if s.strip()}
+    curated = [c for c in CURATED if not src_filter or c[0] in src_filter]
 
     lib = Library()
     connectors: dict = {}
@@ -106,8 +138,9 @@ def main():
     skipped = []
     existing = {d.source for d in lib.store.list_documents() if d.source}
 
-    print(f"=== Harvest: {len(CURATED)} curated works ===\n")
-    for src, ident, century, author, short in CURATED:
+    scope = f" [{', '.join(sorted(src_filter))}]" if src_filter else ""
+    print(f"=== Harvest: {len(curated)} curated works{scope} ===\n")
+    for src, ident, century, author, short in curated:
         label = f"{author} — {short}"
         if expected_source(src, ident) in existing:
             print(f"HAVE  {label}  (already ingested)")
@@ -142,7 +175,7 @@ def main():
     by_source = {d.source: d for d in lib.store.list_documents()}
     to_translate = []   # (doc_id, lang, stage, label, n_seg)
     seen_ids = set()
-    for src, ident, century, author, short in CURATED:
+    for src, ident, century, author, short in curated:
         d = by_source.get(expected_source(src, ident))
         if d is None or d.id in seen_ids:
             continue
