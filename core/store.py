@@ -126,6 +126,16 @@ class Store:
         self.conn.commit()
         return doc
 
+    def set_translation_status(self, doc_id: int, status: str) -> None:
+        """Set a document's translation_status, keeping the legacy
+        has_existing_translation boolean in sync (True iff status=='translated')."""
+        self.conn.execute(
+            "UPDATE documents SET translation_status = ?, "
+            "has_existing_translation = ? WHERE id = ?",
+            (status, int(status == "translated"), doc_id),
+        )
+        self.conn.commit()
+
     def set_translation(self, segment_id: int, english_text: str) -> None:
         self.conn.execute(
             "UPDATE segments SET english_text = ? WHERE id = ?",
