@@ -14,7 +14,7 @@ from .wikisource import WikisourceConnector
 from .tei import TEIConnector
 from .files import FileConnector
 from .digiliblt import DigilibLTConnector
-from .corpus_corporum import CorpusCorporumConnector
+from .corpus_corporum import CorpusCorporumConnector, ALIMConnector
 from .edcs import EDCSConnector
 from .corpus_thomisticum import CorpusThomisticumConnector
 from .perseus import (PerseusConnector, GreekPerseusConnector,
@@ -30,6 +30,7 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     FileConnector.name: FileConnector,
     DigilibLTConnector.name: DigilibLTConnector,
     CorpusCorporumConnector.name: CorpusCorporumConnector,
+    ALIMConnector.name: ALIMConnector,
     EDCSConnector.name: EDCSConnector,
     CorpusThomisticumConnector.name: CorpusThomisticumConnector,
     PerseusConnector.name: PerseusConnector,

@@ -177,3 +177,28 @@ class CorpusCorporumConnector(Connector):
             if c is not parent and _local(c.tag) == localname and c.text and c.text.strip():
                 return c.text.strip()
         return None
+
+
+class ALIMConnector(CorpusCorporumConnector):
+    """ALIM (Archivio della Latinità Italiana del Medioevo) — medieval Italian
+    Latin (mostly critical editions, largely untranslated; skews high-medieval/
+    Renaissance Italy, so more post-1000 than 400-1000).
+
+    ALIM is published inside Corpus Corporum as corpus 14009 ("Latinità Italiana
+    del Medioevo"), so this reuses the Corpus Corporum backend verbatim and only
+    re-stamps provenance (source/license/translation_status) so ALIM works are
+    distinguishable from the rest of Corpus Corporum in the library.
+    """
+    name = "alim"
+    CORPUS = "14009"
+
+    def discover(self, corpus_idno: str = "", limit: int = 50) -> List[str]:
+        return super().discover(corpus_idno or self.CORPUS, limit)
+
+    def fetch(self, text_idno: str, **meta_overrides) -> RawWork:
+        meta, parts = super().fetch(text_idno, **meta_overrides)
+        meta["source"] = f"ALIM ({str(text_idno).strip()})"
+        meta["license"] = "ALIM (SISMEL / Unione Accademica Nazionale) via Corpus Corporum"
+        meta.setdefault("translation_status", "unknown")
+        meta.update(meta_overrides)            # explicit caller overrides win
+        return meta, parts
