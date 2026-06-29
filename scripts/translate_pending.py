@@ -33,6 +33,8 @@ def main():
     ap.add_argument("--batch-size", type=int, default=16, help="model batch size")
     ap.add_argument("--chunk", type=int, default=200,
                     help="segments per DB commit (resume granularity)")
+    ap.add_argument("--max-length", type=int, default=256,
+                    help="cap on tokenization/generation length (lower = less VRAM)")
     args = ap.parse_args()
 
     lib = Library()
@@ -56,6 +58,8 @@ def main():
     t_start = time.time()
     for d, pending in plan:
         tr = lib.translator_for(d.language, d.language_stage)
+        if hasattr(tr, "max_length"):
+            tr.max_length = args.max_length
         n = len(pending)
         t0 = time.time()
         done = 0

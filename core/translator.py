@@ -31,10 +31,12 @@ class NLLBTranslator(Translator):
     TGT_LANG = "eng_Latn"
 
     def __init__(self, model_name: str = "facebook/nllb-200-distilled-600M",
-                 src_lang: str = None, tgt_lang: str = None, preprocess=None):
+                 src_lang: str = None, tgt_lang: str = None, preprocess=None,
+                 max_length: int = 512):
         self.model_name = model_name
         self.src_lang = src_lang or self.SRC_LANG
         self.tgt_lang = tgt_lang or self.TGT_LANG
+        self.max_length = max_length      # caps tokenization + generation length
         # Optional source-text normalizer (e.g. strip_greek_diacritics); must
         # match whatever normalization the model was trained with.
         self.preprocess = preprocess
@@ -75,19 +77,42 @@ class NLLBTranslator(Translator):
         self._ensure_loaded()
         if self.preprocess:
             texts = [self.preprocess(t) for t in texts]
-        out: List[str] = []
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            inputs = self._tokenizer(
-                batch, return_tensors="pt", padding=True,
-                truncation=True, max_length=512,
+
+        # Length-aware batching: group similar-length texts so one long segment
+        # doesn't pad a whole batch to its size (the main VRAM waste). Results are
+        # mapped back to the original order before returning.
+        order = sorted(range(len(texts)), key=lambda j: len(texts[j]))
+        results: List[str] = [""] * len(texts)
+        i = 0
+        bs = max(1, batch_size)
+        while i < len(order):
+            idx = order[i:i + bs]
+            batch = [texts[j] for j in idx]
+            try:
+                eng = self._generate(batch, torch)
+                for j, e in zip(idx, eng):
+                    results[j] = e
+                i += len(idx)
+                if bs < batch_size:        # recovered — grow back toward target
+                    bs = min(batch_size, bs * 2)
+            except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+                if "out of memory" not in str(exc).lower():
+                    raise
+                torch.cuda.empty_cache()
+                if bs == 1:                # a single segment won't fit even capped
+                    results[idx[0]] = ""    # leave untranslated; resume can retry
+                    i += 1
+                else:
+                    bs = max(1, bs // 2)    # back off and retry this slice
+        return results
+
+    def _generate(self, batch: List[str], torch) -> List[str]:
+        inputs = self._tokenizer(batch, return_tensors="pt", padding=True,
+                                 truncation=True, max_length=self.max_length)
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        with torch.no_grad():
+            generated = self._model.generate(
+                **inputs, forced_bos_token_id=self._tgt_id,
+                max_length=self.max_length, num_beams=4, early_stopping=True,
             )
-            inputs = {k: v.to(self._device) for k, v in inputs.items()}
-            with torch.no_grad():
-                generated = self._model.generate(
-                    **inputs,
-                    forced_bos_token_id=self._tgt_id,
-                    max_length=512, num_beams=4, early_stopping=True,
-                )
-            out.extend(self._tokenizer.batch_decode(generated, skip_special_tokens=True))
-        return out
+        return self._tokenizer.batch_decode(generated, skip_special_tokens=True)
