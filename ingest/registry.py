@@ -21,6 +21,7 @@ from .perseus import (PerseusConnector, GreekPerseusConnector,
                       First1KGreekConnector, PTAConnector)
 from .mgh import MGHConnector
 from .pg_corpus import PGCorpusConnector
+from .musamedievalis import MusaMedievalisConnector
 
 
 _REGISTRY: Dict[str, Callable[[], Connector]] = {
@@ -39,6 +40,7 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     PTAConnector.name: PTAConnector,
     MGHConnector.name: MGHConnector,
     PGCorpusConnector.name: PGCorpusConnector,
+    MusaMedievalisConnector.name: MusaMedievalisConnector,
 }
 
 

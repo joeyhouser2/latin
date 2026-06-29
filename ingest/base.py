@@ -49,13 +49,15 @@ class Connector(ABC):
         """
         meta = dict(meta)
         pre_segmented = meta.pop("_pre_segmented", False)
+        verse = meta.pop("_verse", False)   # one segment per verse line (poetry)
         lang = meta.get("language", "la")
         sections: List[Section] = []
         for s_order, (label, raw_text) in enumerate(parts):
             if pre_segmented:
                 sentences = [raw_text.strip()] if raw_text.strip() else []
             else:
-                sentences = segment_text(raw_text, use_cltk=use_cltk, lang=lang)
+                sentences = segment_text(raw_text, use_cltk=use_cltk,
+                                         lang=lang, verse=verse)
             section = Section(label=label, order=s_order)
             section.segments = [
                 Segment(latin_text=s, order=i, source_loc=label,

@@ -1,0 +1,2158 @@
+[
+ {
+  "code": "ABBO_FLO|acro|001",
+  "author": "Abbo Floriacensis",
+  "dates": "940/45 - 1004",
+  "century": 10,
+  "title": "carmina"
+ },
+ {
+  "code": "ABBO_SNG|bepa|000",
+  "author": "Abbo Sangermanensis",
+  "dates": "† 939/40",
+  "century": 10,
+  "title": "bella Parisiacae urbis"
+ },
+ {
+  "code": "AEDELW|carm|000",
+  "author": "Aedelwulfus",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen de abbatibus"
+ },
+ {
+  "code": "AENIGM|laur|001",
+  "author": "aenigmata",
+  "dates": "saec. VII - VIII",
+  "century": 7,
+  "title": "Anglica vel Lauresheimensia"
+ },
+ {
+  "code": "AENIGM|bern|001",
+  "author": "aenigmata",
+  "dates": "saec. VII - VIII",
+  "century": 7,
+  "title": "Bernensia"
+ },
+ {
+  "code": "AETHILW|rhyt|001",
+  "author": "Aethilwaldus",
+  "dates": "716 - 757",
+  "century": 8,
+  "title": "*carmen rhythmicum"
+ },
+ {
+  "code": "AETHILW|carm|002",
+  "author": "Aethilwaldus",
+  "dates": "716 - 757",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "AGIUS|epha|001",
+  "author": "Agius Corbeiensis",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "epicedium Hathumodae"
+ },
+ {
+  "code": "AGIUS|veco|001",
+  "author": "Agius Corbeiensis",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "versus computistici"
+ },
+ {
+  "code": "AGNELL|pont|001",
+  "author": "Agnellus Ravennas",
+  "dates": "fere 805 - post 854",
+  "century": 9,
+  "title": "liber pontificalis"
+ },
+ {
+  "code": "AIMOIN|trvi|001",
+  "author": "Aimoinus",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen de translatione Vincentii"
+ },
+ {
+  "code": "ALCUIN|carm|001",
+  "author": "Alcuinus",
+  "dates": "fere 730 - 804",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "ALCUIN|carh|001",
+  "author": "Alcuinus",
+  "dates": "fere 730 - 804",
+  "century": 8,
+  "title": "carmina rhytmica"
+ },
+ {
+  "code": "ALDH|carm|001",
+  "author": "Aldhelmus",
+  "dates": "fere 640 - 709",
+  "century": 7,
+  "title": "carmina ecclesiastica"
+ },
+ {
+  "code": "ALDH|cave|001",
+  "author": "Aldhelmus",
+  "dates": "fere 640 - 709",
+  "century": 7,
+  "title": "carmen de virginitate"
+ },
+ {
+  "code": "ALDH|enig|000",
+  "author": "Aldhelmus",
+  "dates": "fere 640 - 709",
+  "century": 7,
+  "title": "enigmata"
+ },
+ {
+  "code": "AMALAR|vers|001",
+  "author": "Amalarius",
+  "dates": "fere 775 - 850",
+  "century": 8,
+  "title": "versus marini"
+ },
+ {
+  "code": "ANGIL_CE|carm|001",
+  "author": "Angilbertus Centulensis",
+  "dates": "fere 750 - 814",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "ANGIL_CE|vers|001",
+  "author": "Angilbertus Centulensis",
+  "dates": "fere 750 - 814",
+  "century": 8,
+  "title": "versus"
+ },
+ {
+  "code": "ANGIL_MI|font|001",
+  "author": "Angilbertus miles",
+  "dates": "post 841",
+  "century": 9,
+  "title": "versus de Fontaneto"
+ },
+ {
+  "code": "AUDRAD|carm|001",
+  "author": "Audradus Modicus",
+  "dates": "† post 853",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "AUDRAD|trin|000",
+  "author": "Audradus Modicus",
+  "dates": "† post 853",
+  "century": 9,
+  "title": "de sancta trinitate"
+ },
+ {
+  "code": "AUTP|patt|001",
+  "author": "Autpertus",
+  "dates": "† 784",
+  "century": 8,
+  "title": "vita Paldonis, Tatonis et Tasonis"
+ },
+ {
+  "code": "BEDA|libe|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "libellus precum"
+ },
+ {
+  "code": "BEDA|cant|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "canticum graduum"
+ },
+ {
+  "code": "BEDA|cuth|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "vita Cuthberti"
+ },
+ {
+  "code": "BEDA|mart|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "martyrologium poeticum"
+ },
+ {
+  "code": "BEDA|hymn|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "hymni"
+ },
+ {
+  "code": "BEDA|iudi|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "hymnus de die iudicii"
+ },
+ {
+  "code": "BEDA|psal|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "in psalmos"
+ },
+ {
+  "code": "BEDA|loci|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "de locis sanctis"
+ },
+ {
+  "code": "BEDA|natu|001",
+  "author": "Beda",
+  "dates": "672/673 - 735",
+  "century": 7,
+  "title": "versus de natura rerum"
+ },
+ {
+  "code": "BERNOWIN|carm|001",
+  "author": "Bernowinus",
+  "dates": "saec. IX in.",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "BERTHAR|bene|001",
+  "author": "Bertharius",
+  "dates": "856 - 883",
+  "century": 9,
+  "title": "carmen de sancto Benedicto"
+ },
+ {
+  "code": "BERTHAR|bein|001",
+  "author": "Bertharius",
+  "dates": "856 - 883",
+  "century": 9,
+  "title": "carmen de sancto Benedicto interpolatum"
+ },
+ {
+  "code": "BERTH|balt|001",
+  "author": "Berthgyth",
+  "dates": "saec. VIII/2",
+  "century": 8,
+  "title": "versus ad Balthardum"
+ },
+ {
+  "code": "BONIF|carm|001",
+  "author": "Bonifatius",
+  "dates": "672/75 - 754",
+  "century": 7,
+  "title": "carmina"
+ },
+ {
+  "code": "CAND_FUL|eigi|00a",
+  "author": "Candidus Fuldensis",
+  "dates": "† 845",
+  "century": 9,
+  "title": "vita Aegili"
+ },
+ {
+  "code": "CAND_FUL|eiep|001",
+  "author": "Candidus Fuldensis",
+  "dates": "† 845",
+  "century": 9,
+  "title": "epitaphia Aegili"
+ },
+ {
+  "code": "CARM_AGO|carm|001",
+  "author": "",
+  "dates": "ante 840",
+  "century": 9,
+  "title": "carmen ad Agobardum"
+ },
+ {
+  "code": "CARM_LDW|carm|001",
+  "author": "",
+  "dates": "ante 840",
+  "century": 9,
+  "title": "carmen ad Ludovicum Pium"
+ },
+ {
+  "code": "CARM_AQU|caaq|001",
+  "author": "",
+  "dates": "844/45",
+  "century": 9,
+  "title": "carmen de Aquilegia"
+ },
+ {
+  "code": "CARM_BEN|carm|00a",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen de Benedicta"
+ },
+ {
+  "code": "CARM_CAS|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen de Cassiano"
+ },
+ {
+  "code": "CARM_RAT|comp|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "carmen de compoti ratione"
+ },
+ {
+  "code": "CARM_CND|cond|001",
+  "author": "",
+  "dates": "975 - 1025",
+  "century": 10,
+  "title": "carmen de conditione mundi"
+ },
+ {
+  "code": "CARM_ANG|angl|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "carmen de conversione Anglie"
+ },
+ {
+  "code": "CARM_CSX|saxo|001",
+  "author": "",
+  "dates": "saec. VIII ex.",
+  "century": 8,
+  "title": "carmen de conversione Saxonum"
+ },
+ {
+  "code": "CARM_GFR|carm|001",
+  "author": "",
+  "dates": "844",
+  "century": 9,
+  "title": "carmen de exordio Francorum"
+ },
+ {
+  "code": "CARM_NYN|carm|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "carmen de Nynia episcopo"
+ },
+ {
+  "code": "CARM_PES|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen de peste"
+ },
+ {
+  "code": "CARM_PIP|pivi|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "carmen de Pippino"
+ },
+ {
+  "code": "CARM_QNT|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen de Quintino"
+ },
+ {
+  "code": "CARM_LUC|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen de sancta Lucia"
+ },
+ {
+  "code": "CARM_TRT|carm|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "carmen de temporum ratione"
+ },
+ {
+  "code": "CARM_TIM|carm|001",
+  "author": "",
+  "dates": "fere 834",
+  "century": 9,
+  "title": "carmen de Timone comite"
+ },
+ {
+  "code": "CARM_OT3|carm|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "carmina ad Ottonem III spectantia"
+ },
+ {
+  "code": "CARM_AMA|carm|001",
+  "author": "",
+  "dates": "saec. X - XII",
+  "century": 10,
+  "title": "carmina amatoria"
+ },
+ {
+  "code": "CARM_AUG|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina Augiensia"
+ },
+ {
+  "code": "CARM_BIB|vers|001",
+  "author": "",
+  "dates": "842 - 888",
+  "century": 9,
+  "title": "carmina bibliothecarum et psalteriorum"
+ },
+ {
+  "code": "CARM_CEN|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina Cenomanensia"
+ },
+ {
+  "code": "CARM_CNT|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina Centulensia"
+ },
+ {
+  "code": "CARM_PAR|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina codicis Parisini 8812"
+ },
+ {
+  "code": "CARM_VAT|carm|001",
+  "author": "",
+  "dates": "fere 895",
+  "century": 9,
+  "title": "carmina codicis Vaticani 5330"
+ },
+ {
+  "code": "CARM_LAM|carm|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "carmina de Lamberto"
+ },
+ {
+  "code": "CARM_LU2|carm|001",
+  "author": "",
+  "dates": "fere 875",
+  "century": 9,
+  "title": "carmina de Ludovico II"
+ },
+ {
+  "code": "CARM_AET|carm|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "carmina ex schola Aethelwoldi"
+ },
+ {
+  "code": "CARM_FIG|carm|001",
+  "author": "",
+  "dates": "saec. VII - VIII",
+  "century": 7,
+  "title": "carmina figurata"
+ },
+ {
+  "code": "CARM_IMG|carm|001",
+  "author": "",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "carmina imaginibus librorum adscripta"
+ },
+ {
+  "code": "CARM_MIN|vers|001",
+  "author": "",
+  "dates": "saec. X - XI",
+  "century": 10,
+  "title": "carmina in miniaturis"
+ },
+ {
+  "code": "CARM_L2|carm|001",
+  "author": "",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "carmina libris aevi Karolini adiecta"
+ },
+ {
+  "code": "CARM_L3|carm|001",
+  "author": "",
+  "dates": "saec. X - XI",
+  "century": 10,
+  "title": "carmina libris aevi Ottonum adiecta"
+ },
+ {
+  "code": "CARM_L1|carm|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "carmina libris saec. VIII adiecta"
+ },
+ {
+  "code": "CARM_MUT|carm|001",
+  "author": "",
+  "dates": "fere 892",
+  "century": 9,
+  "title": "carmina Mutinensia"
+ },
+ {
+  "code": "CARM_SLB|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina Salisburgensia"
+ },
+ {
+  "code": "CARM_SGL|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina Sangallensia"
+ },
+ {
+  "code": "CARM_SCO|ca_i|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina Scotorum"
+ },
+ {
+  "code": "CARM_VAR|kar1|001",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Karolini pars I"
+ },
+ {
+  "code": "CARM_VAR|kar2|001",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Karolini pars II"
+ },
+ {
+  "code": "CARM_VAR|karx|001",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Karolini pars II, suppl."
+ },
+ {
+  "code": "CARM_VAR|otto|001",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Ottonum"
+ },
+ {
+  "code": "CARM_VAR|otta|002",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Ottonum, suppl. A"
+ },
+ {
+  "code": "CARM_VAR|ottb|001",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Ottonum, suppl. B"
+ },
+ {
+  "code": "CARM_VAR|ottc|001",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Ottonum, suppl. C"
+ },
+ {
+  "code": "CARM_VAR|ottd|001",
+  "author": "carmina varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Ottonum, suppl. D"
+ },
+ {
+  "code": "TRANSL_C|tran|001",
+  "author": "",
+  "dates": "886/87",
+  "century": 9,
+  "title": "Corneli translationes"
+ },
+ {
+  "code": "CYPR_COR|carm|001",
+  "author": "Cyprianus Cordubensis",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "Cypriani et Samsonis carmina"
+ },
+ {
+  "code": "CYPR_COR|caap|001",
+  "author": "Cyprianus Cordubensis",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "appendix"
+ },
+ {
+  "code": "DHUODA|dhuo|122",
+  "author": "Dhuoda",
+  "dates": "saec. IX me.",
+  "century": 9,
+  "title": "rhythmi ex manuali Dhuodanae"
+ },
+ {
+  "code": "DICUIL|vers|001",
+  "author": "Dicuil",
+  "dates": "saec. IX in.",
+  "century": 9,
+  "title": "versus"
+ },
+ {
+  "code": "DIONYS|anni|001",
+  "author": "Dionysius",
+  "dates": "saec. VII - VIII",
+  "century": 7,
+  "title": "de annis"
+ },
+ {
+  "code": "DUDO|norm|000",
+  "author": "Dudo Viromandensis",
+  "dates": "960 - 1026",
+  "century": 10,
+  "title": "gesta Normannorum, versus inserti"
+ },
+ {
+  "code": "DUNSTAN|reli|001",
+  "author": "Dunstanus Cantuariensis",
+  "dates": "† 988",
+  "century": 10,
+  "title": "reliquiae et fragmenta"
+ },
+ {
+  "code": "ECBASIS|ecba|001",
+  "author": "",
+  "dates": "935 - 950",
+  "century": 10,
+  "title": "ecbasis captivi"
+ },
+ {
+  "code": "ECL_THEO|eclo|001",
+  "author": "",
+  "dates": "850 - 925",
+  "century": 9,
+  "title": "ecloga Theoduli"
+ },
+ {
+  "code": "EINH|pass|001",
+  "author": "Einhardus",
+  "dates": "fere 770 - 840",
+  "century": 8,
+  "title": "rhythmus de passione Marcellini et Petri"
+ },
+ {
+  "code": "ENGELM|carm|001",
+  "author": "Engelmodus",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "EPTPH_VA|karo|001",
+  "author": "epitaphia varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Karolini"
+ },
+ {
+  "code": "EPTPH_VA|kasu|001",
+  "author": "epitaphia varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Karolini, suppl."
+ },
+ {
+  "code": "EPTPH_VA|otto|001",
+  "author": "epitaphia varia",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "aevi Ottonum"
+ },
+ {
+  "code": "EPTPH_GO|epit|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "epitaphium Gozlini"
+ },
+ {
+  "code": "EPTPH_HE|epit|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "epitaphium Heinrici"
+ },
+ {
+  "code": "ERCHEMB|mart|001",
+  "author": "Erchembertus Casinensis",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "martyrologium"
+ },
+ {
+  "code": "ERMEN_EL|epis|000",
+  "author": "Ermenricus Elwangensis",
+  "dates": "fere 814 - 874",
+  "century": 9,
+  "title": "epistola ad Grimaldum"
+ },
+ {
+  "code": "ERMOLD|ludo|000",
+  "author": "Ermoldus Nigellus",
+  "dates": "† post 838",
+  "century": 9,
+  "title": "carmen in honorem Ludowici Pii"
+ },
+ {
+  "code": "ERMOLD|pipp|001",
+  "author": "Ermoldus Nigellus",
+  "dates": "† post 838",
+  "century": 9,
+  "title": "carmen in laudem Pippini regis"
+ },
+ {
+  "code": "ERMOLD|caap|001",
+  "author": "Ermoldus Nigellus",
+  "dates": "† post 838",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "EUG_VULG|syll|002",
+  "author": "Eugenius Vulgarius",
+  "dates": "saec. X in.",
+  "century": 10,
+  "title": "sylloga"
+ },
+ {
+  "code": "EUG_VULG|appe|01a",
+  "author": "Eugenius Vulgarius",
+  "dates": "saec. X in.",
+  "century": 10,
+  "title": "appendix"
+ },
+ {
+  "code": "EUG_VULG|cale|001",
+  "author": "Eugenius Vulgarius",
+  "dates": "saec. X in.",
+  "century": 10,
+  "title": "calendarium metricum"
+ },
+ {
+  "code": "EUSEB|enig|001",
+  "author": "Eusebius",
+  "dates": "fere 716",
+  "century": 8,
+  "title": "enigmata"
+ },
+ {
+  "code": "EXHORT_P|expo|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "exhortatio poenitendi"
+ },
+ {
+  "code": "FARD|carm|001",
+  "author": "Fardulfus",
+  "dates": "saec. IX in.",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "FLOD|invo|001",
+  "author": "Flodoardus Remensis",
+  "dates": "894 - 966",
+  "century": 9,
+  "title": "invocatio"
+ },
+ {
+  "code": "FLOD|pala|001",
+  "author": "Flodoardus Remensis",
+  "dates": "894 - 966",
+  "century": 9,
+  "title": "de triumphis Palaestinae"
+ },
+ {
+  "code": "FLOD|anti|000",
+  "author": "Flodoardus Remensis",
+  "dates": "894 - 966",
+  "century": 9,
+  "title": "de triumphis Antiochiae"
+ },
+ {
+  "code": "FLOD|ital|000",
+  "author": "Flodoardus Remensis",
+  "dates": "894 - 966",
+  "century": 9,
+  "title": "de triumphis apud Italiam"
+ },
+ {
+  "code": "FLOR_LGD|carm|001",
+  "author": "Florus Lugdunensis",
+  "dates": "† 859/60",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "FLOR_LGD|carx|001",
+  "author": "Florus Lugdunensis",
+  "dates": "† 859/60",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "FRAGM|frag|001",
+  "author": "",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "fragmenta poetica aevi Carolini"
+ },
+ {
+  "code": "FRIDEG|brev|001",
+  "author": "Fridegodus",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "breviloquium"
+ },
+ {
+  "code": "FROUM|carm|001",
+  "author": "Froumundus",
+  "dates": "fere 960 - 1008",
+  "century": 10,
+  "title": "carmina"
+ },
+ {
+  "code": "FULB_CAR|lusc|001",
+  "author": "Fulbertus Carnotensis",
+  "dates": "960-1028",
+  "century": 10,
+  "title": "de luscinia"
+ },
+ {
+  "code": "GER_SUES|roma|001",
+  "author": "Gerardus Suessionensis",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "Vita Sancti Romani Rothomagensis Archiepiscopi"
+ },
+ {
+  "code": "GERWARD|vers|001",
+  "author": "Gerwardus",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "versus"
+ },
+ {
+  "code": "GESTA_AP|geap|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "gesta Apollonii"
+ },
+ {
+  "code": "GESTA_BE|gebe|000",
+  "author": "",
+  "dates": "914/24",
+  "century": 10,
+  "title": "gesta Berengarii"
+ },
+ {
+  "code": "GIR_FLOR|carm|001",
+  "author": "Giraldus Floriacensis",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "GODESC|cai_|001",
+  "author": "Godescalcus Saxo",
+  "dates": "803 - 870",
+  "century": 9,
+  "title": "carmina I"
+ },
+ {
+  "code": "GODESC|caap|001",
+  "author": "Godescalcus Saxo",
+  "dates": "803 - 870",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "GODESC|vers|001",
+  "author": "Godescalcus Saxo",
+  "dates": "803 - 870",
+  "century": 9,
+  "title": "versus"
+ },
+ {
+  "code": "GODESC|caii|001",
+  "author": "Godescalcus Saxo",
+  "dates": "803 - 870",
+  "century": 9,
+  "title": "carmina II"
+ },
+ {
+  "code": "GOSBERT|carm|001",
+  "author": "Gosbertus",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "carmen acrosticum"
+ },
+ {
+  "code": "GUNZO|epis|001",
+  "author": "Gunzo Novariensis",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "epistula ad Augienses, epilogus"
+ },
+ {
+  "code": "HEIRIC|coll|001",
+  "author": "Heiricus Autissiodorensis",
+  "dates": "841- post 875",
+  "century": 9,
+  "title": "collectaneorum praefatio"
+ },
+ {
+  "code": "HEIRIC|vige|00a",
+  "author": "Heiricus Autissiodorensis",
+  "dates": "841- post 875",
+  "century": 9,
+  "title": "vita Germani episcopi Autissiodorensis"
+ },
+ {
+  "code": "HIB_EXUL|carm|001",
+  "author": "Hibernicus Exul",
+  "dates": "saec. IX in.",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "HINCM|carm|001",
+  "author": "Hincmarus Remensis",
+  "dates": "fere 806 - 882",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "HRABAN|carm|001",
+  "author": "Hrabanus Maurus",
+  "dates": "fere 780 - 856",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "HRABAN|caap|001",
+  "author": "Hrabanus Maurus",
+  "dates": "fere 780 - 856",
+  "century": 8,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "HRABAN|euan|001",
+  "author": "Hrabanus Maurus",
+  "dates": "fere 780 - 856",
+  "century": 8,
+  "title": "carmen euangeliorum"
+ },
+ {
+  "code": "HRABAN|epis|015",
+  "author": "Hrabanus Maurus",
+  "dates": "fere 780 - 856",
+  "century": 8,
+  "title": "epistula 15, versus inserti"
+ },
+ {
+  "code": "HRABAN|imag|001",
+  "author": "Hrabanus Maurus",
+  "dates": "fere 780 - 856",
+  "century": 8,
+  "title": "de imagine Caesaris"
+ },
+ {
+  "code": "HRABAN|laud|000",
+  "author": "Hrabanus Maurus",
+  "dates": "fere 780 - 856",
+  "century": 8,
+  "title": "laudes crucis"
+ },
+ {
+  "code": "HROTSV|mari|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "Maria"
+ },
+ {
+  "code": "HROTSV|asce|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "de ascensione Domini"
+ },
+ {
+  "code": "HROTSV|gong|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "passio Gongolfi martyris"
+ },
+ {
+  "code": "HROTSV|pela|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "passio Pelagii"
+ },
+ {
+  "code": "HROTSV|theo|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "lapsus et conversio Theophili Vicedomini"
+ },
+ {
+  "code": "HROTSV|basi|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "Basilius"
+ },
+ {
+  "code": "HROTSV|dion|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "passio Dionysii"
+ },
+ {
+  "code": "HROTSV|agne|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "passio Agnetis"
+ },
+ {
+  "code": "HROTSV|joha|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "Johannes"
+ },
+ {
+  "code": "HROTSV|gest|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "gesta Ottonis imperatoris"
+ },
+ {
+  "code": "HROTSV|prim|001",
+  "author": "Hrotsvitha",
+  "dates": "fere 935 - 975",
+  "century": 10,
+  "title": "primordia coenobii Gandersheimensis"
+ },
+ {
+  "code": "HUCBALD|eglo|000",
+  "author": "Hucbaldus Elnonensis",
+  "dates": "fere 840 - 930",
+  "century": 9,
+  "title": "egloga de calvis"
+ },
+ {
+  "code": "HUCBALD|dieb|001",
+  "author": "Hucbaldus Elnonensis",
+  "dates": "fere 840 - 930",
+  "century": 9,
+  "title": "de diebus Egyptiacis"
+ },
+ {
+  "code": "HUCBALD|ymni|001",
+  "author": "Hucbaldus Elnonensis",
+  "dates": "fere 840 - 930",
+  "century": 9,
+  "title": "hymni"
+ },
+ {
+  "code": "HUCBALD|caap|001",
+  "author": "Hucbaldus Elnonensis",
+  "dates": "fere 840 - 930",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "HYMN_VER|vere|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "hymnus de Verena"
+ },
+ {
+  "code": "HYMN_NYN|hymn|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "hymnus Nynie episcopi"
+ },
+ {
+  "code": "ILDER|vers|001",
+  "author": "Ildericus Beneventanus",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "versus apud chronicon Salernitanum"
+ },
+ {
+  "code": "IOH_HYMM|cena|001",
+  "author": "Iohannes Hymmonides",
+  "dates": "825 - 880/82",
+  "century": 9,
+  "title": "versiculi de cena Cypriani"
+ },
+ {
+  "code": "IOH_SCOT|carm|001",
+  "author": "Iohannes Scotus",
+  "dates": "† post 870",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "IOH_SCOT|caap|001",
+  "author": "Iohannes Scotus",
+  "dates": "† post 870",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "IOH_SCOT|frag|001",
+  "author": "Iohannes Scotus",
+  "dates": "† post 870",
+  "century": 9,
+  "title": "fragmenta"
+ },
+ {
+  "code": "IOS_SCOT|carm|001",
+  "author": "Iosephus Scotus",
+  "dates": "saec. VIII ex.",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "IOTSALDUS|odil|001",
+  "author": "Iotsaldus",
+  "dates": "fere 975 - 1052/54",
+  "century": 10,
+  "title": "de vita et virtutibus Odilonis Abbatis, versus inserti"
+ },
+ {
+  "code": "ISRAEL_S|metr|001",
+  "author": "Israel Scotus",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "versus de arte metrica"
+ },
+ {
+  "code": "KALEND|kale|001",
+  "author": "",
+  "dates": "saec. X - XII",
+  "century": 10,
+  "title": "kalendaria metrica"
+ },
+ {
+  "code": "CARM_KAR|karo|001",
+  "author": "",
+  "dates": "fere 810",
+  "century": 9,
+  "title": "Karolus Magnus et Leo papa"
+ },
+ {
+  "code": "LAUD_LEO|laud|001",
+  "author": "",
+  "dates": "saec. IX - X",
+  "century": 9,
+  "title": "laudes Leodegundiae"
+ },
+ {
+  "code": "LAUD_MED|laud|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "laudes Mediolanensis civitatis"
+ },
+ {
+  "code": "LAUD_VER|laud|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "laudes Veronensis civitatis"
+ },
+ {
+  "code": "LEO_VERC|metr|001",
+  "author": "Leo Vercellensis",
+  "dates": "sedit 999 - 1024",
+  "century": 10,
+  "title": "metrum"
+ },
+ {
+  "code": "LETALD_M|with|001",
+  "author": "Letaldus Miciacensis",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "Within piscator"
+ },
+ {
+  "code": "LIBER_MO|mons|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "liber monstrorum, versus inserti"
+ },
+ {
+  "code": "LIOS_MON|libe|001",
+  "author": "Lios Monocus",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "libellulus sacerdotalis"
+ },
+ {
+  "code": "LIUTPR|anta|001",
+  "author": "Liutprandus Cremonensis",
+  "dates": "920 - 970/72",
+  "century": 10,
+  "title": "antapodosis"
+ },
+ {
+  "code": "LIUTPR|lega|001",
+  "author": "Liutprandus Cremonensis",
+  "dates": "920 - 970/72",
+  "century": 10,
+  "title": "legatio"
+ },
+ {
+  "code": "LUP_FERR|vers|001",
+  "author": "Lupus Ferrariensis",
+  "dates": "† fere 862",
+  "century": 9,
+  "title": "versus"
+ },
+ {
+  "code": "MANFRED|carm|001",
+  "author": "Manfredus",
+  "dates": "saec. VII - VIII",
+  "century": 7,
+  "title": "carmina computistica"
+ },
+ {
+  "code": "MICON|prol|001",
+  "author": "Micon",
+  "dates": "† fere 853",
+  "century": 9,
+  "title": "prologus in tractatum de primis syllabis"
+ },
+ {
+  "code": "MICON|pros|001",
+  "author": "Micon",
+  "dates": "† fere 853",
+  "century": 9,
+  "title": "opus prosodiacum, prooemium"
+ },
+ {
+  "code": "MILO|cafi|001",
+  "author": "Milo Elnonensis",
+  "dates": "† 871/72",
+  "century": 9,
+  "title": "carmina figurata"
+ },
+ {
+  "code": "MILO|viam|000",
+  "author": "Milo Elnonensis",
+  "dates": "† 871/72",
+  "century": 9,
+  "title": "vita Amandi"
+ },
+ {
+  "code": "MILO|carm|001",
+  "author": "Milo Elnonensis",
+  "dates": "† 871/72",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "MILO|sobr|000",
+  "author": "Milo Elnonensis",
+  "dates": "† 871/72",
+  "century": 9,
+  "title": "de sobrietate"
+ },
+ {
+  "code": "MILO|caap|001",
+  "author": "Milo Elnonensis",
+  "dates": "† 871/72",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "MISSA_CS|miss|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "missa sancti Cassiani"
+ },
+ {
+  "code": "MODOIN|eclo|000",
+  "author": "Modoinus",
+  "dates": "† 840/43",
+  "century": 9,
+  "title": "eclogae"
+ },
+ {
+  "code": "MODOIN|caap|001",
+  "author": "Modoinus",
+  "dates": "† 840/43",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "NOTKER_B|syll|001",
+  "author": "Notkerus Balbulus",
+  "dates": "fere 840 - 912",
+  "century": 9,
+  "title": "versus ex sylloge Sangallensi"
+ },
+ {
+  "code": "NOTKER_B|hymn|000",
+  "author": "Notkerus Balbulus",
+  "dates": "fere 840 - 912",
+  "century": 9,
+  "title": "liber hymnorum"
+ },
+ {
+  "code": "NOTKER_B|wald|001",
+  "author": "Notkerus Balbulus",
+  "dates": "fere 840 - 912",
+  "century": 9,
+  "title": "epistulae ad Waldonem et Salomonem"
+ },
+ {
+  "code": "NOTKER_B|vita|001",
+  "author": "Notkerus Balbulus",
+  "dates": "fere 840 - 912",
+  "century": 9,
+  "title": "vita sancti Galli"
+ },
+ {
+  "code": "NOTKER_B|step|001",
+  "author": "Notkerus Balbulus",
+  "dates": "fere 840 - 912",
+  "century": 9,
+  "title": "de sancto Stephano"
+ },
+ {
+  "code": "NOTKER_B|arti|001",
+  "author": "Notkerus Balbulus",
+  "dates": "fere 840 - 912",
+  "century": 9,
+  "title": "fragmentum de septem liberalibus artibus"
+ },
+ {
+  "code": "NOTKER_B|intr|001",
+  "author": "Notkerus Balbulus",
+  "dates": "fere 840 - 912",
+  "century": 9,
+  "title": "introductiones ad introitum missae"
+ },
+ {
+  "code": "ODO_CLUN|occu|000",
+  "author": "Odo Cluniacensis",
+  "dates": "878/79 - 942",
+  "century": 9,
+  "title": "occupatio"
+ },
+ {
+  "code": "PASS|arnu|001",
+  "author": "passiones sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "passio Arnulfi"
+ },
+ {
+  "code": "PASS|chri|001",
+  "author": "passiones sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "passio Christophori"
+ },
+ {
+  "code": "PASS|iust|001",
+  "author": "passiones sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "passio Iustini martyris"
+ },
+ {
+  "code": "PASS|maur|001",
+  "author": "passiones sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "passio Mauricii martyris Agaunensis"
+ },
+ {
+  "code": "PASS|pepa|001",
+  "author": "passiones sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "passio Petri et Pauli"
+ },
+ {
+  "code": "PAUL_AQU|carm|001",
+  "author": "Paulinus Aquileiensis",
+  "dates": "fere 740 - 802",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "PAUL_AQU|vers|001",
+  "author": "Paulinus Aquileiensis",
+  "dates": "fere 740 - 802",
+  "century": 8,
+  "title": "versus"
+ },
+ {
+  "code": "PAUL_ALB|carm|001",
+  "author": "Paulus Albarus",
+  "dates": "fere 800 - 860/61",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "PAUL_DIA|carm|001",
+  "author": "Paulus Diaconus",
+  "dates": "720 - 799",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "PAUL_DIA|appe|001",
+  "author": "Paulus Diaconus",
+  "dates": "720 - 799",
+  "century": 8,
+  "title": "appendix"
+ },
+ {
+  "code": "PAUL_DIA|vers|001",
+  "author": "Paulus Diaconus",
+  "dates": "720 - 799",
+  "century": 8,
+  "title": "versus"
+ },
+ {
+  "code": "PETR_NEA|mira|001",
+  "author": "Petrus Neapolitanus",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "miracula sancti Agnelli, versus inserti"
+ },
+ {
+  "code": "PETR_PIS|carm|011",
+  "author": "Petrus Pisanus",
+  "dates": "† ante 799",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "PLANCT_K|plan|001",
+  "author": "",
+  "dates": "fere 814",
+  "century": 9,
+  "title": "planctus de obitu Karoli"
+ },
+ {
+  "code": "POET_SAX|anna|001",
+  "author": "Poeta Saxo",
+  "dates": "fere 880",
+  "century": 9,
+  "title": "annales de gestis Karoli Magni"
+ },
+ {
+  "code": "PURCH|gewi|001",
+  "author": "Purchardus Augiensis",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "carmen de gestis Witigowonis"
+ },
+ {
+  "code": "RADBERT|carm|001",
+  "author": "Radbertus Corbeiensis",
+  "dates": "fere 785 - 859",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "RADBOD|carm|001",
+  "author": "Radbodus Traiectensis",
+  "dates": "fere 850 - 917",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "RATHER|phre|001",
+  "author": "Ratherius Veronensis",
+  "dates": "fere 890 - 974",
+  "century": 9,
+  "title": "Phrenesis"
+ },
+ {
+  "code": "RHY_ANT|meka|001",
+  "author": "rhythmi antiquiores",
+  "dates": "saec. VI - IX",
+  "century": 6,
+  "title": "Merovingici et Karolini"
+ },
+ {
+  "code": "RHY_ANT|vari|080",
+  "author": "rhythmi antiquiores",
+  "dates": "saec. VI - IX",
+  "century": 6,
+  "title": "ex variis codicibus collecti"
+ },
+ {
+  "code": "RHY_ANT|comp|108",
+  "author": "rhythmi antiquiores",
+  "dates": "saec. VI - IX",
+  "century": 6,
+  "title": "computistici"
+ },
+ {
+  "code": "RHY_ANT|lang|133",
+  "author": "rhythmi antiquiores",
+  "dates": "saec. VI - IX",
+  "century": 6,
+  "title": "Langobardici"
+ },
+ {
+  "code": "RHY_ANT|pugn|001",
+  "author": "rhythmi antiquiores",
+  "dates": "saec. VI - IX",
+  "century": 6,
+  "title": "de pugna Fontanetica"
+ },
+ {
+  "code": "RHY_ANT|hugo|001",
+  "author": "rhythmi antiquiores",
+  "dates": "saec. VI - IX",
+  "century": 6,
+  "title": "de obitu Hugonis"
+ },
+ {
+  "code": "RHY_ANT|odon|001",
+  "author": "rhythmi antiquiores",
+  "dates": "saec. VI - IX",
+  "century": 6,
+  "title": "in Odonem regem"
+ },
+ {
+  "code": "RHY_CODP|pari|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "rhythmi cod. Parisini 242"
+ },
+ {
+  "code": "SALOM|carm|000",
+  "author": "Salomo III",
+  "dates": "fere 860 - 919",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "SEDUL_SC|car1|001",
+  "author": "Sedulius Scotus",
+  "dates": "saec. IX me.",
+  "century": 9,
+  "title": "carmina 1"
+ },
+ {
+  "code": "SEDUL_SC|car2|001",
+  "author": "Sedulius Scotus",
+  "dates": "saec. IX me.",
+  "century": 9,
+  "title": "carmina 2"
+ },
+ {
+  "code": "SEDUL_SC|car3|001",
+  "author": "Sedulius Scotus",
+  "dates": "saec. IX me.",
+  "century": 9,
+  "title": "carmina 3"
+ },
+ {
+  "code": "SEDUL_SC|caap|001",
+  "author": "Sedulius Scotus",
+  "dates": "saec. IX me.",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "SEDUL_SC|past|001",
+  "author": "Sedulius Scotus",
+  "dates": "saec. IX me.",
+  "century": 9,
+  "title": "carmen pastorale"
+ },
+ {
+  "code": "SEQ_SANG|sequ|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "sequentiae Sangallenses"
+ },
+ {
+  "code": "SIGL_REM|rhyt|001",
+  "author": "Sigloardus Remensis",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "rhythmi"
+ },
+ {
+  "code": "SMAR|epit|001",
+  "author": "Smaragdus",
+  "dates": "† fere 825",
+  "century": 9,
+  "title": "epitaphium"
+ },
+ {
+  "code": "SMAR|carm|001",
+  "author": "Smaragdus",
+  "dates": "† fere 825",
+  "century": 9,
+  "title": "carmina"
+ },
+ {
+  "code": "SMAR|vers|001",
+  "author": "Smaragdus",
+  "dates": "† fere 825",
+  "century": 9,
+  "title": "versus ad filium Ludovici Pii"
+ },
+ {
+  "code": "SMAR|psal|001",
+  "author": "Smaragdus",
+  "dates": "† fere 825",
+  "century": 9,
+  "title": "carmen in psalterio"
+ },
+ {
+  "code": "STEPH_LE|lamb|001",
+  "author": "Stephanus Leodiensis",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "excerpta ex vita sancti Landberti"
+ },
+ {
+  "code": "SYLL_BER|syll|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "sylloge cod. Bernensis 358"
+ },
+ {
+  "code": "SYLL_SAN|syll|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "sylloge cod. Sangallensis 381"
+ },
+ {
+  "code": "TATW|enig|000",
+  "author": "Tatwinus",
+  "dates": "sedit 731 - 734",
+  "century": 8,
+  "title": "enigmata"
+ },
+ {
+  "code": "THEO_TRE|vita|001",
+  "author": "Theodericus Treverensis",
+  "dates": "† 977",
+  "century": 10,
+  "title": "vita Liutrudis rhythmica"
+ },
+ {
+  "code": "THEODULF|epit|001",
+  "author": "Theodulfus Aurelianensis",
+  "dates": "760 - 821",
+  "century": 8,
+  "title": "epitaphia"
+ },
+ {
+  "code": "THEODULF|carm|001",
+  "author": "Theodulfus Aurelianensis",
+  "dates": "760 - 821",
+  "century": 8,
+  "title": "carmina"
+ },
+ {
+  "code": "THEODULF|caap|001",
+  "author": "Theodulfus Aurelianensis",
+  "dates": "760 - 821",
+  "century": 8,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "TIT_ITAL|lune|001",
+  "author": "tituli Italici",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "epitaphium Lunense"
+ },
+ {
+  "code": "TIT_ITAL|luce|001",
+  "author": "tituli Italici",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "epitaphia Lucensia"
+ },
+ {
+  "code": "TIT_ITAL|medi|001",
+  "author": "tituli Italici",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "epitaphia Mediolanensia"
+ },
+ {
+  "code": "TIT_ME1|titu|001",
+  "author": "",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "tituli metrici I"
+ },
+ {
+  "code": "TIT_ME2|titu|001",
+  "author": "",
+  "dates": "saec. IX in.",
+  "century": 9,
+  "title": "tituli metrici II"
+ },
+ {
+  "code": "TIT_ME3|titu|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "tituli metrici III"
+ },
+ {
+  "code": "TIT_ME3A|titu|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "tituli metrici III A"
+ },
+ {
+  "code": "TIT_ME3B|titu|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "tituli metrici III B"
+ },
+ {
+  "code": "TIT_ME4|titu|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "tituli metrici IV"
+ },
+ {
+  "code": "TRANSL_B|duod|001",
+  "author": "translationes sanctorum",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "translatio duodecim martyrum"
+ },
+ {
+  "code": "TRANSL_B|merc|001",
+  "author": "translationes sanctorum",
+  "dates": "saec. VIII",
+  "century": 8,
+  "title": "translatio sancti Mercurii"
+ },
+ {
+  "code": "VERS_EBO|vers|001",
+  "author": "",
+  "dates": "ante 840",
+  "century": 9,
+  "title": "versus ad Ebonem Remensem"
+ },
+ {
+  "code": "VERS_GLO|vers|001",
+  "author": "",
+  "dates": "saec. IX me.",
+  "century": 9,
+  "title": "versus de eversione monasterii Glonnensis"
+ },
+ {
+  "code": "VERS_HER|vers|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "versus de sancto Herme"
+ },
+ {
+  "code": "VERS_SGL|carm|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "versus Sangallenses"
+ },
+ {
+  "code": "VERS_SCO|caii|001",
+  "author": "",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "versus Scotorum"
+ },
+ {
+  "code": "VITA|agne|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Agnetis"
+ },
+ {
+  "code": "VITA|alep|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Alexii prior"
+ },
+ {
+  "code": "VITA|alea|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Alexii altera"
+ },
+ {
+  "code": "VITA|ansf|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Ansfridi"
+ },
+ {
+  "code": "VITA|bavo|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Bavonis prior et posterior"
+ },
+ {
+  "code": "VITA|chry|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "carmen de inventione sanctorum Chrysanti et Dariae"
+ },
+ {
+  "code": "VITA|corb|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Corbiniani"
+ },
+ {
+  "code": "VITA|duns|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Dunstani"
+ },
+ {
+  "code": "VITA|edua|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Eduardi regis et confessoris"
+ },
+ {
+  "code": "VITA|elig|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Eligii"
+ },
+ {
+  "code": "VITA|eras|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Erasmi"
+ },
+ {
+  "code": "VITA|erlu|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Erluini"
+ },
+ {
+  "code": "VITA|germ|000",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Germani"
+ },
+ {
+  "code": "VITA|gisl|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Gisleni"
+ },
+ {
+  "code": "VITA|land|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Landelini"
+ },
+ {
+  "code": "VITA|leud|000",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Leudegarii"
+ },
+ {
+  "code": "VITA|mans|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Mansueti"
+ },
+ {
+  "code": "VITA|mart|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Martini"
+ },
+ {
+  "code": "VITA|maxi|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Maximini episcopi Treverensis"
+ },
+ {
+  "code": "VITA|quin|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Quintini"
+ },
+ {
+  "code": "VITA|thdr|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Theoderici"
+ },
+ {
+  "code": "VITA|thdf|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Theodulfi"
+ },
+ {
+  "code": "VITA|vere|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita Verenae"
+ },
+ {
+  "code": "VITA|wolf|001",
+  "author": "vitae sanctorum",
+  "dates": "saec. IX - XI",
+  "century": 9,
+  "title": "vita rhythmica sancti Wolfgangi"
+ },
+ {
+  "code": "VULF|carm|001",
+  "author": "Vulfinus Diensis",
+  "dates": "saec. IX in.",
+  "century": 9,
+  "title": "vita Marcelli metrica"
+ },
+ {
+  "code": "WALAHFR|carm|001",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "carmina varia"
+ },
+ {
+  "code": "WALAHFR|caap|001",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "carminum appendix"
+ },
+ {
+  "code": "WALAHFR|blai|001",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "versus de Blaithmaic"
+ },
+ {
+  "code": "WALAHFR|hort|001",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "de cultu hortorum carmen"
+ },
+ {
+  "code": "WALAHFR|wett|001",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "visio Wettini"
+ },
+ {
+  "code": "WALAHFR|mamm|00a",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "de vita et fine Mammae"
+ },
+ {
+  "code": "WALAHFR|hymn|001",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "in natalem Mammetis hymnus"
+ },
+ {
+  "code": "WALAHFR|gall|001",
+  "author": "Walahfridus Strabo",
+  "dates": "808/9 - 849",
+  "century": 9,
+  "title": "vita sancti Galli confessoris"
+ },
+ {
+  "code": "WALDR|carm|001",
+  "author": "Waldrammus Sangallensis",
+  "dates": "saec. X in.",
+  "century": 10,
+  "title": "carmina"
+ },
+ {
+  "code": "WALT_SP|scol|00a",
+  "author": "Walterus Spirensis",
+  "dates": "fere 963 - 1027/31",
+  "century": 10,
+  "title": "scolasticus"
+ },
+ {
+  "code": "WALT_SP|chri|001",
+  "author": "Walterus Spirensis",
+  "dates": "fere 963 - 1027/31",
+  "century": 10,
+  "title": "vita et passio Christophori"
+ },
+ {
+  "code": "WALTHARI|walt|001",
+  "author": "",
+  "dates": "saec. X",
+  "century": 10,
+  "title": "Waltharius"
+ },
+ {
+  "code": "WANDALB|mart|00a",
+  "author": "Wandalbertus Prumensis",
+  "dates": "813 - fere 870",
+  "century": 9,
+  "title": "martyrologium"
+ },
+ {
+  "code": "WANDALB|mens|001",
+  "author": "Wandalbertus Prumensis",
+  "dates": "813 - fere 870",
+  "century": 9,
+  "title": "de mensium nominibus"
+ },
+ {
+  "code": "WANDALB|horo|001",
+  "author": "Wandalbertus Prumensis",
+  "dates": "813 - fere 870",
+  "century": 9,
+  "title": "horologium"
+ },
+ {
+  "code": "WANDALB|hora|001",
+  "author": "Wandalbertus Prumensis",
+  "dates": "813 - fere 870",
+  "century": 9,
+  "title": "horarium"
+ },
+ {
+  "code": "WANDALB|crea|001",
+  "author": "Wandalbertus Prumensis",
+  "dates": "813 - fere 870",
+  "century": 9,
+  "title": "de creatione mundi"
+ },
+ {
+  "code": "WULFSTAN|brev|001",
+  "author": "Wulfstanus",
+  "dates": "post 994/96",
+  "century": 10,
+  "title": "breviloquium de omnibus sanctis"
+ },
+ {
+  "code": "WULFSTAN|swit|000",
+  "author": "Wulfstanus",
+  "dates": "post 994/96",
+  "century": 10,
+  "title": "narratio metrica de sancto Swithuno"
+ },
+ {
+  "code": "WURMON|carm|001",
+  "author": "Wurmonocus",
+  "dates": "saec. IX",
+  "century": 9,
+  "title": "vita sancti Pauli Aureliani, versus inserti"
+ }
+]
