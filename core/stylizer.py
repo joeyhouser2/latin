@@ -121,9 +121,15 @@ PRESETS = {
             "contemporary English."
         ),
         instruction=(
-            "Rewrite the following passage in plain modern English: everyday "
-            "vocabulary, straightforward sentence structure, no archaic words or "
-            "inversions. Preserve the exact meaning. " + _FAITHFUL + "\n\n"
+            "Rewrite the following passage in the plainest possible modern English, "
+            "as a contemporary news report or a children's encyclopedia would put it. "
+            "Use only the most common everyday words. Break long periodic sentences "
+            "into short, direct ones. Use normal subject-verb-object order — undo every "
+            "inversion. Remove all rhetorical flourish, apostrophe ('O thou...'), and "
+            "elevated diction. No archaic words (no thee/thou/hath/whilst/ere), no "
+            "semicolons-as-clause-glue. Keep proper names. Preserve the exact meaning "
+            "but make the wording as different from the original's ornate style as the "
+            "meaning allows. " + _FAITHFUL + "\n\n"
             "{meta}Passage:\n{literal}"
         ),
     ),

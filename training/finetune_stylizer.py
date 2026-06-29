@@ -71,9 +71,21 @@ def main():
     ap.add_argument("--prefix", default="victorianize: ", help="T5 task prefix")
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument("--batch-size", type=int, default=16)
+    ap.add_argument("--grad-accum", type=int, default=1,
+                    help="gradient accumulation steps (effective batch = batch-size * this)")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--max-length", type=int, default=256)
     ap.add_argument("--eval-frac", type=float, default=0.05)
+    ap.add_argument("--optim", default="adamw_torch_fused",
+                    help="'adafactor' is far lighter on VRAM (no m/v states) — needed "
+                         "to fit flan-t5-large on a 12GB GPU")
+    ap.add_argument("--gradient-checkpointing", action="store_true",
+                    help="trade compute for VRAM (needed for large on 12GB)")
+    ap.add_argument("--resume", action="store_true",
+                    help="resume from the latest checkpoint in --out (auto-detected)")
+    ap.add_argument("--eval-gen", action="store_true",
+                    help="run slow generation-based chrF eval each epoch (default: fast "
+                         "loss-only eval; evaluate checkpoints with scripts/eval_stylizer.py)")
     args = ap.parse_args()
 
     from transformers import (AutoModelForSeq2SeqLM, AutoTokenizer,
@@ -98,14 +110,21 @@ def main():
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
+        gradient_accumulation_steps=args.grad_accum,
         learning_rate=args.lr,
         eval_strategy="epoch",
         save_strategy="epoch",
-        predict_with_generate=True,
+        save_total_limit=6,               # keep recent epochs to pick the best register/fidelity tradeoff
+        # Generation-based eval (chrF) costs ~8 min/epoch on flan-t5-large; we instead
+        # evaluate saved checkpoints externally with scripts/eval_stylizer.py (richer
+        # metrics). In-training eval stays loss-only (seconds) unless --eval-gen.
+        predict_with_generate=args.eval_gen,
         generation_max_length=args.max_length,
         group_by_length=True,
         logging_steps=50,
         bf16=torch.cuda.is_available(),   # T5 is unstable in fp16 (NaN); bf16 is safe on Ada
+        optim=args.optim,
+        gradient_checkpointing=args.gradient_checkpointing,
         report_to=[],
     )
     trainer = Seq2SeqTrainer(
@@ -113,16 +132,44 @@ def main():
         train_dataset=StyleDataset(train_pairs, tokenizer, args.prefix, args.max_length),
         eval_dataset=StyleDataset(eval_pairs, tokenizer, args.prefix, args.max_length),
         data_collator=collator,
-        compute_metrics=_build_metrics(tokenizer),
+        compute_metrics=_build_metrics(tokenizer) if args.eval_gen else None,
     )
     if not torch.cuda.is_available():
         print("WARNING: no CUDA GPU — training will be slow on CPU.")
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume or None)
     trainer.save_model(args.out)
     tokenizer.save_pretrained(args.out)
+    # Guard against the truncated-root-save bug: verify the just-saved root model
+    # reloads and matches the trainer's weights; if not, fall back to the last good
+    # checkpoint's shard.
+    _verify_or_repair_save(args.out, trainer)
     print(f"Saved Victorian stylizer to {args.out}")
     print(f'Use it:  Seq2SeqStylizer(model_name="{args.out}", prefix="{args.prefix}")')
+
+
+def _verify_or_repair_save(out, trainer):
+    """Load the root model.safetensors and sanity-check it; on failure copy the
+    newest checkpoint's model.safetensors + config.json over the root."""
+    import shutil
+    from transformers import AutoModelForSeq2SeqLM
+    try:
+        AutoModelForSeq2SeqLM.from_pretrained(out)
+        print("Root model verified (loads cleanly).")
+        return
+    except Exception as e:                       # truncated / corrupt root shard
+        print(f"Root model failed to load ({e}); repairing from last checkpoint.")
+    ckpts = sorted(glob.glob(os.path.join(out, "checkpoint-*")),
+                   key=lambda p: int(p.rsplit("-", 1)[1]))
+    if not ckpts:
+        raise SystemExit("No checkpoint to repair from.")
+    last = ckpts[-1]
+    for f in ("model.safetensors", "config.json", "generation_config.json"):
+        src = os.path.join(last, f)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(out, f))
+    AutoModelForSeq2SeqLM.from_pretrained(out)    # re-verify
+    print(f"Repaired root model from {last}.")
 
 
 def _build_metrics(tokenizer):
