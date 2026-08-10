@@ -33,6 +33,13 @@ def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
+_DIV_RE = re.compile(r"^div\d*$")  # TEI P5 <div>, and older TEI.2 <div1>/<div2>/<div3>
+
+
+def _is_div(tag: str) -> bool:
+    return bool(_DIV_RE.match(_local(tag)))
+
+
 class TEIConnector(Connector):
     name = "tei"
 
@@ -95,11 +102,13 @@ class TEIConnector(Connector):
         return ET.parse(source).getroot()
 
     def _sections_from_body(self, body: ET.Element) -> List[Tuple[str, str]]:
-        """Each leaf <div> (no child <div>) becomes a section; label from @n/@type."""
+        """Each leaf <div> (no child <div>) becomes a section; label from @n/@type.
+        Recognizes both P5 <div type="..."> and older TEI.2 numbered <div1>/
+        <div2>/<div3> (e.g. CAMENA)."""
         sections: List[Tuple[str, str]] = []
 
         def walk(elem: ET.Element, trail: List[str]):
-            child_divs = [c for c in elem if _local(c.tag) == "div"]
+            child_divs = [c for c in elem if _is_div(c.tag)]
             label_bit = self._div_label(elem)
             here = trail + ([label_bit] if label_bit else [])
             if child_divs:
@@ -110,7 +119,7 @@ class TEIConnector(Connector):
                 if text:
                     sections.append((", ".join(here) or "Text", text))
 
-        top_divs = [c for c in body if _local(c.tag) == "div"]
+        top_divs = [c for c in body if _is_div(c.tag)]
         if not top_divs:
             return []
         for d in top_divs:

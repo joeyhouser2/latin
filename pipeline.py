@@ -164,23 +164,45 @@ class Library:
     def translator_for(self, language: str, language_stage: str = "unknown") -> Translator:
         """Return the translator for a (language, stage): an explicit override if
         set, else the best available fine-tuned model, else stock NLLB. Stage-specific
-        models are preferred over the per-language default."""
+        models are preferred over the per-language default.
+
+        Cached by the *resolved model identity*, not the raw (language, stage)
+        pair: several stages commonly resolve to the same underlying model
+        (e.g. every Latin stage falls back to models/nllb-latin, since
+        TRANSLATOR_MODELS has no Latin stage-specific entries), and caching by
+        the raw pair loaded one full redundant copy of that model per distinct
+        stage seen — multiple copies of the identical model stacked in GPU
+        memory at once, which starved throughput far more than it should."""
         if self.translator is not None:
             return self.translator
-        key = (language, language_stage)
-        if key not in self._lang_translators:
-            self._lang_translators[key] = self._build_translator(language, language_stage)
-        return self._lang_translators[key]
+        model_key = self._resolve_translator_key(language, language_stage)
+        if model_key not in self._lang_translators:
+            self._lang_translators[model_key] = self._build_translator(language, language_stage)
+        return self._lang_translators[model_key]
 
     @staticmethod
-    def _build_translator(language: str, language_stage: str = "unknown") -> Translator:
+    def _candidates(language: str, language_stage: str) -> list:
         # Stage-specific candidates first, then the per-language default; dedupe so a
         # model dir listed in both is only probed once.
         candidates = list(TRANSLATOR_MODELS.get((language, language_stage), []))
         for entry in TRANSLATOR_MODELS.get((language, None), []):
             if entry not in candidates:
                 candidates.append(entry)
-        for model_dir, src_lang, normalize in candidates:
+        return candidates
+
+    @classmethod
+    def _resolve_translator_key(cls, language: str, language_stage: str) -> str:
+        """The model directory (or stock-model tag) a (language, stage) pair
+        actually resolves to -- the true identity to cache/dedupe a loaded
+        model by, since many stages share one underlying model file."""
+        for model_dir, _src_lang, _normalize in cls._candidates(language, language_stage):
+            if os.path.isfile(os.path.join(model_dir, "model.safetensors")):
+                return model_dir
+        return f"stock:{STOCK_SRC.get(language, 'lat_Latn')}"
+
+    @classmethod
+    def _build_translator(cls, language: str, language_stage: str = "unknown") -> Translator:
+        for model_dir, src_lang, normalize in cls._candidates(language, language_stage):
             if os.path.isfile(os.path.join(model_dir, "model.safetensors")):
                 print(f"Using fine-tuned translator for {language}/{language_stage}: {model_dir}")
                 return NLLBTranslator(

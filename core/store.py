@@ -62,9 +62,10 @@ class Store:
     def __init__(self, path: str = "data/corpus.db"):
         self.path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        self.conn = sqlite3.connect(path, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
         self._migrate()
         self.conn.commit()
@@ -128,11 +129,13 @@ class Store:
 
     def set_translation_status(self, doc_id: int, status: str) -> None:
         """Set a document's translation_status, keeping the legacy
-        has_existing_translation boolean in sync (True iff status=='translated')."""
+        has_existing_translation boolean in sync (True iff a translation is
+        known to exist at all, free or paywalled)."""
+        exists = status in ("translated", "translated_paywalled")
         self.conn.execute(
             "UPDATE documents SET translation_status = ?, "
             "has_existing_translation = ? WHERE id = ?",
-            (status, int(status == "translated"), doc_id),
+            (status, int(exists), doc_id),
         )
         self.conn.commit()
 
@@ -173,6 +176,26 @@ class Store:
             "UPDATE segments SET embed_text = ? WHERE id = ?",
             [(et, sid) for sid, et in pairs],
         )
+        self.conn.commit()
+
+    def set_latin_texts(self, pairs: Iterable[tuple], reset_translation: bool = True) -> None:
+        """Bulk-write (segment_id, latin_text) pairs, e.g. after OCR correction.
+
+        Defaults to nulling out english_text/english_styled/embed_text/scansion
+        too, since anything derived from the old (bad) latin_text is now stale
+        and should be regenerated rather than silently kept around.
+        """
+        pairs = list(pairs)
+        self.conn.executemany(
+            "UPDATE segments SET latin_text = ? WHERE id = ?",
+            [(lt, sid) for sid, lt in pairs],
+        )
+        if reset_translation:
+            self.conn.executemany(
+                "UPDATE segments SET english_text = NULL, english_styled = NULL, "
+                "style_label = NULL, embed_text = NULL, scansion = NULL WHERE id = ?",
+                [(sid,) for sid, _ in pairs],
+            )
         self.conn.commit()
 
     # -- read ----------------------------------------------------------------

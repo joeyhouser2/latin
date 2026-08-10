@@ -593,6 +593,32 @@ rag.index_texts(texts)
 
 ---
 
+## Fixing Corrupted OCR Sources
+
+Scanned/OCR'd sources (as opposed to clean digital editions) can carry two
+distinct kinds of corruption, each with its own tooling:
+
+- **Long-s and similar character-level misreads** (ſ→f, ct→ft, letter-spaced
+  title-page runs split into fake word breaks) — dictionary + trained-classifier
+  pipeline in [`ingest/ocr_fix.py`](ingest/ocr_fix.py), [`ingest/ocr_fix_model.py`](ingest/ocr_fix_model.py),
+  [`ingest/ocr_fix_ct.py`](ingest/ocr_fix_ct.py). Run `scripts/check_ocr_corruption.py`
+  to scan the whole corpus for candidates, then `scripts/fix_long_s_ocr.py` /
+  `scripts/fix_long_s_ocr_model.py` / `scripts/fix_ct_ocr.py` per document
+  (dry-run by default, `--apply` to write).
+- **Embedded non-Latin script the original OCR never recognized at all**
+  (e.g. Greek quotations force-fit into Latin-alphabet noise) — this needs
+  re-OCR from the original page images, not text-level correction. See
+  [`docs/embedded-nonlatin-script-recovery.md`](docs/embedded-nonlatin-script-recovery.md)
+  for the full runbook (finding archive.org page scans, setting up
+  language-aware Tesseract, aligning segments to pages, splicing recovered
+  text back in, and — importantly — why translating the recovered
+  non-Latin text word-by-word causes model repetition-loop degeneration).
+
+Either way, segments too corrupted to translate reliably get an honest
+`[untranslatable: ...]` placeholder rather than a fabricated translation —
+see [`ingest/garble_detect.py`](ingest/garble_detect.py). This is wired into
+`scripts/translate_pending.py` automatically for all documents.
+
 ## Improving Translation Quality
 
 NLLB-200's Latin is trained mostly on ecclesiastical/modern Latin. For Classical Latin, consider:

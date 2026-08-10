@@ -35,24 +35,29 @@ import re
 
 
 # Status vocabulary kept in sync with the documents.translation_status column.
-TRANSLATED = "translated"     # a published English translation is known to exist
+TRANSLATED = "translated"     # a published English translation is known to exist,
+                               # freely available (public domain / open access)
+TRANSLATED_PAYWALLED = "translated_paywalled"  # a translation exists but sits
+                               # behind a commercial edition (Loeb, DOML, ...) —
+                               # a free MT rendering still adds real value here
 UNTRANSLATED = "untranslated"  # high-confidence: none exists (documentary genres)
 UNKNOWN = "unknown"           # no signal — do not claim either way
 
-STATUSES = (TRANSLATED, UNTRANSLATED, UNKNOWN)
+STATUSES = (TRANSLATED, TRANSLATED_PAYWALLED, UNTRANSLATED, UNKNOWN)
 
 
 @dataclass
 class TranslationStatus:
     """Outcome of inference. ``has_existing_translation`` mirrors the legacy
-    boolean (True iff status == TRANSLATED) so existing call-sites keep working."""
+    boolean (True iff a translation is known to exist at all, free or
+    paywalled) so existing call-sites keep working."""
 
     status: str
     reason: str
 
     @property
     def has_existing_translation(self) -> bool:
-        return self.status == TRANSLATED
+        return self.status in (TRANSLATED, TRANSLATED_PAYWALLED)
 
 
 # Substrings (matched case-insensitively against title/genre/series) for genres

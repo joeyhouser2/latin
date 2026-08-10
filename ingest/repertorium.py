@@ -39,6 +39,7 @@ import re
 import requests
 
 from .translation_status import TRANSLATED, UNTRANSLATED, UNKNOWN
+from .fuzzy_match import best_match, norm as _norm, clean_search_title as _search_title
 
 
 # German names (as they appear in <h3> headings) for the English language.
@@ -125,23 +126,24 @@ class RepertoriumLookup:
         if not candidates:
             return RepertoriumResult(UNKNOWN, "no Repertorium match")
 
-        want = _norm(title)
-        author_key = _norm(author).split()[-1] if author else None  # surname token
-
-        def score_of(c) -> float:
-            s = SequenceMatcher(None, want, _norm(c[1])).ratio()
-            if author_key and author_key in c[2]:      # author appears in sort field
-                s += 0.1
-            return s
-
-        best = max(candidates, key=score_of)
-        score = min(score_of(best), 1.0)
-        if score < self.match_threshold:
+        # See ingest.fuzzy_match: bare generic titles ("carmina", "versus", ...)
+        # require real author corroboration, not just title similarity, or we
+        # collapse many unrelated works onto one confident-looking match.
+        m = best_match(
+            title, author, candidates,
+            title_of=lambda c: c[1], context_of=lambda c: c[2],
+            threshold=self.match_threshold,
+        )
+        if m.candidate is None:
+            reason = ("no confident match" if m.score < self.match_threshold
+                      else "title too generic to trust without author match")
+            best = max(candidates, key=lambda c: SequenceMatcher(
+                None, _norm(title), _norm(c[1])).ratio())
             return RepertoriumResult(
-                UNKNOWN, f"no confident match (best {score:.2f}: {best[1]!r})",
-                match_score=score)
+                UNKNOWN, f"{reason} (best {m.score:.2f}: {best[1]!r})",
+                match_score=m.score)
 
-        wid, matched_title, _ = best
+        wid, matched_title, _ = m.candidate
         langs = self.translations(wid)
         has_eng = any(any(en in l.lower() for en in _ENGLISH_NAMES) for l in langs)
         if has_eng:
@@ -153,21 +155,5 @@ class RepertoriumLookup:
             status = UNTRANSLATED
             reason = "no translations recorded in Repertorium"
         return RepertoriumResult(status, reason, werk_id=wid,
-                                 matched_title=matched_title, match_score=score,
+                                 matched_title=matched_title, match_score=m.score,
                                  languages=langs)
-
-
-def _search_title(title: str) -> str:
-    """Trim a library title to a clean head suitable for the AND-based search:
-    cut at the first structural separator and drop editorial recension tails."""
-    head = re.split(r"[/(:;]", title, 1)[0]
-    head = re.sub(r"\b(recensio|rec\.|pars|liber|lib\.)\b.*$", "", head, flags=re.I)
-    return head.strip(" ,.-") or title
-
-
-def _norm(s: str) -> str:
-    """Lowercase, drop punctuation/diacritics-ish noise for fuzzy title matching."""
-    s = s.lower()
-    s = re.sub(r"\(.*?\)", " ", s)          # drop parenthetical author/qualifiers
-    s = re.sub(r"[^a-z0-9 ]+", " ", s)
-    return re.sub(r"\s+", " ", s).strip()

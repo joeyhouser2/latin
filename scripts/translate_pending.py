@@ -22,6 +22,8 @@ import sentence_transformers  # noqa: F401  (import order: see harvest script)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline import Library
+from ingest.garble_detect import is_garbled, UNTRANSLATABLE_PLACEHOLDER
+from ingest.mixed_lang_translate import translate_mixed_batch, _GREEK_CHAR
 
 
 def main():
@@ -30,6 +32,9 @@ def main():
     ap.add_argument("--source-prefix", default="",
                     help="only docs whose source starts with this (e.g. 'ALIM (')")
     ap.add_argument("--language", default="", help="only this language (la/grc)")
+    ap.add_argument("--skip-translated", action="store_true",
+                    help="skip docs already known to have a published English "
+                         "translation (translation_status == 'translated')")
     ap.add_argument("--batch-size", type=int, default=16, help="model batch size")
     ap.add_argument("--chunk", type=int, default=200,
                     help="segments per DB commit (resume granularity)")
@@ -43,6 +48,8 @@ def main():
         docs = [d for d in docs if d.source and d.source.startswith(args.source_prefix)]
     if args.language:
         docs = [d for d in docs if d.language == args.language]
+    if args.skip_translated:
+        docs = [d for d in docs if d.translation_status != "translated"]
 
     # Count work up front.
     plan = []   # (doc, pending_segments)
@@ -65,9 +72,35 @@ def main():
         done = 0
         for i in range(0, n, args.chunk):
             batch = pending[i:i + args.chunk]
-            eng = tr.translate_batch([s.latin_text for s in batch],
-                                     batch_size=args.batch_size)
-            lib.store.set_translations([(s.id, e) for s, e in zip(batch, eng)])
+            # Segments whose source is too corrupted to be real Latin (e.g.
+            # embedded quotations in a script the original OCR never
+            # recognized, garbled into Latin-alphabet-lookalike noise) get an
+            # honest placeholder instead of being sent through the
+            # translator -- an NMT model doesn't fail loudly on garbage input,
+            # it produces fluent, confident, entirely fabricated English,
+            # which reads as real content and is worse than admitting the
+            # source is unusable. See ingest/garble_detect.py.
+            clean = [s for s in batch if not is_garbled(s.latin_text)]
+            garbled = [s for s in batch if is_garbled(s.latin_text)]
+
+            # Some clean-enough segments still carry genuine embedded Greek
+            # (recovered by ingest/page_splice.py's re-OCR pipeline -- see
+            # ingest/mixed_lang_translate.py for why those go through a
+            # separate, safer path rather than the plain translator).
+            mixed = [s for s in clean if d.language == "la" and _GREEK_CHAR.search(s.latin_text)]
+            pure = [s for s in clean if s not in mixed]
+
+            results = []
+            if pure:
+                eng = tr.translate_batch([s.latin_text for s in pure],
+                                         batch_size=args.batch_size)
+                results.extend(zip(pure, eng))
+            if mixed:
+                eng = translate_mixed_batch([s.latin_text for s in mixed], tr,
+                                            batch_size=args.batch_size)
+                results.extend(zip(mixed, eng))
+            results.extend((s, UNTRANSLATABLE_PLACEHOLDER) for s in garbled)
+            lib.store.set_translations([(s.id, e) for s, e in results])
             done += len(batch)
             grand += len(batch)
             rate = grand / max(time.time() - t_start, 1e-6)
