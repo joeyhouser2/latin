@@ -8,6 +8,8 @@ current chunk — just re-run to continue.
 Usage:
     python scripts/translate_pending.py --source-prefix "ALIM ("
     python scripts/translate_pending.py --language la --chunk 200 --batch-size 16
+    python scripts/translate_pending.py --doc-id 42
+    python scripts/translate_pending.py --doc-id 42 --section-range 2 5
     CUDA_VISIBLE_DEVICES=0 python scripts/translate_pending.py --source-prefix "ALIM ("
 """
 from __future__ import annotations
@@ -26,11 +28,29 @@ from ingest.garble_detect import is_garbled, UNTRANSLATABLE_PLACEHOLDER
 from ingest.mixed_lang_translate import translate_mixed_batch, _GREEK_CHAR
 
 
+def _section_slice(doc, section_range):
+    """The document's sections narrowed to a 1-based inclusive range.
+
+    Matches the range picker in book_creator's corpus tab, which numbers
+    sections from 1 in `ord` order -- so "sections 2-5" means the same thing
+    in both projects, and preparing what you are about to print does not mean
+    translating the whole work.
+    """
+    sections = sorted(doc.sections, key=lambda s: s.order)
+    if not section_range:
+        return sections
+    first, last = section_range
+    return sections[max(1, first) - 1:min(len(sections), last)]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source-prefix", default="",
                     help="only docs whose source starts with this (e.g. 'ALIM (')")
+    ap.add_argument("--doc-id", type=int, default=None, help="only this document")
+    ap.add_argument("--section-range", type=int, nargs=2, metavar=("FIRST", "LAST"),
+                    default=None, help="only sections FIRST..LAST of the document, 1-based inclusive, in `ord` order (needs --doc-id). Lets a short printed range be prepared without running the whole work.")
     ap.add_argument("--language", default="", help="only this language (la/grc)")
     ap.add_argument("--skip-translated", action="store_true",
                     help="skip docs already known to have a published English "
@@ -42,8 +62,16 @@ def main():
                     help="cap on tokenization/generation length (lower = less VRAM)")
     args = ap.parse_args()
 
+    # A range means nothing across a whole queue of documents -- each has its
+    # own section numbering, so the same 2..5 would mean a different span in
+    # every one of them.
+    if args.section_range and args.doc_id is None:
+        ap.error("--section-range needs --doc-id: section numbers are per-document")
+
     lib = Library()
     docs = lib.store.list_documents()
+    if args.doc_id is not None:
+        docs = [d for d in docs if d.id == args.doc_id]
     if args.source_prefix:
         docs = [d for d in docs if d.source and d.source.startswith(args.source_prefix)]
     if args.language:
@@ -55,7 +83,10 @@ def main():
     plan = []   # (doc, pending_segments)
     for d in docs:
         full = lib.store.get_document(d.id)
-        pending = [s for s in full.iter_segments() if not s.is_translated]
+        pending = [s
+                   for section in _section_slice(full, args.section_range)
+                   for s in sorted(section.segments, key=lambda x: x.order)
+                   if not s.is_translated]
         if pending:
             plan.append((d, pending))
     total = sum(len(p) for _, p in plan)
