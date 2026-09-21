@@ -16,13 +16,16 @@ German editorial apparatus inside Latin documents (e.g. Dreves/Blume's notes
 in the Analecta Hymnica) is detected and translated as German rather than
 Latin -- see ingest/german_detect.py. To fix segments translated before that
 routing existed, re-translate *only* the German ones (Latin untouched):
-    python scripts/translate_pending.py --doc-ids 421,423 --retranslate-german --dry-run
-    python scripts/translate_pending.py --doc-ids 421,423 --retranslate-german
+    python scripts/translate_pending.py --doc-id 423 --retranslate-german --dry-run
+    python scripts/translate_pending.py --source-prefix "Internet Archive (analectahymnica" --retranslate-german
+A re-translation first backs corpus.db up (sqlite backup API, safe alongside
+other writers) to data/corpus.db.bak-preGermanRetranslate-<timestamp>.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 import sys
 import time
 
@@ -51,7 +54,9 @@ def retranslate_german(lib, docs, args):
         if d.language != "la":
             continue
         full = lib.store.get_document(d.id)
-        segs = [s for s in full.iter_segments()
+        segs = [s
+                for section in _section_slice(full, args.section_range)
+                for s in sorted(section.segments, key=lambda x: x.order)
                 if s.is_translated and _is_german_segment(s.latin_text)]
         if segs:
             plan.append((d, segs))
@@ -61,6 +66,14 @@ def retranslate_german(lib, docs, args):
         print(f"  [{d.id}] {(d.source or '')[:50]:50} {len(segs):>6,}")
     if args.dry_run or not total:
         return
+
+    # This overwrites existing translations, so keep a restorable copy. The
+    # backup API (not a file copy) is safe with WAL and concurrent writers.
+    backup = f"{lib.db_path}.bak-preGermanRetranslate-{time.strftime('%Y%m%d%H%M%S')}"
+    dest = sqlite3.connect(backup)
+    lib.store.conn.backup(dest)
+    dest.close()
+    print(f"Backed up corpus to {backup}", flush=True)
 
     tr = lib.german_translator()
     if hasattr(tr, "max_length"):
@@ -108,8 +121,6 @@ def main():
     ap.add_argument("--section-range", type=int, nargs=2, metavar=("FIRST", "LAST"),
                     default=None, help="only sections FIRST..LAST of the document, 1-based inclusive, in `ord` order (needs --doc-id). Lets a short printed range be prepared without running the whole work.")
     ap.add_argument("--language", default="", help="only this language (la/grc)")
-    ap.add_argument("--doc-ids", default="",
-                    help="only these document ids (comma-separated)")
     ap.add_argument("--retranslate-german", action="store_true",
                     help="instead of translating pending segments, re-translate "
                          "already-translated German segments of Latin docs as "
@@ -140,9 +151,6 @@ def main():
         docs = [d for d in docs if d.source and d.source.startswith(args.source_prefix)]
     if args.language:
         docs = [d for d in docs if d.language == args.language]
-    if args.doc_ids:
-        wanted = {int(x) for x in args.doc_ids.split(",") if x.strip()}
-        docs = [d for d in docs if d.id in wanted]
     if args.skip_translated:
         docs = [d for d in docs if d.translation_status != "translated"]
 
