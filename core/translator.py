@@ -32,7 +32,7 @@ class NLLBTranslator(Translator):
 
     def __init__(self, model_name: str = "facebook/nllb-200-distilled-600M",
                  src_lang: str = None, tgt_lang: str = None, preprocess=None,
-                 max_length: int = 512):
+                 max_length: int = 512, nllb_tokenizer: bool = False):
         self.model_name = model_name
         self.src_lang = src_lang or self.SRC_LANG
         self.tgt_lang = tgt_lang or self.TGT_LANG
@@ -40,6 +40,15 @@ class NLLBTranslator(Translator):
         # Optional source-text normalizer (e.g. strip_greek_diacritics); must
         # match whatever normalization the model was trained with.
         self.preprocess = preprocess
+        # transformers 5.0's AutoTokenizer loads NLLB checkpoints as a generic
+        # TokenizersBackend that silently ignores src_lang: no source-language
+        # token is emitted at all, so the model has to guess the input
+        # language (for German it often just copies the input back).
+        # nllb_tokenizer=True loads NllbTokenizerFast directly, which emits the
+        # proper src_lang prefix. Opt-in so existing Latin/Greek translation
+        # (and the fine-tuned models trained under the old behavior) is
+        # unchanged; lat_Latn isn't an NLLB-200 language code anyway.
+        self.nllb_tokenizer = nllb_tokenizer
         self._tokenizer = None
         self._model = None
         self._device = None
@@ -52,15 +61,19 @@ class NLLBTranslator(Translator):
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
         print(f"Loading translation model: {self.model_name}")
-        try:
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, src_lang=self.src_lang)
-        except AttributeError:
-            # transformers 5.0.0's AutoTokenizer cannot resolve the NLLB/m2m_100
-            # tokenizer class (saved as "TokenizersBackend") and raises
-            # AttributeError deep in auto-resolution — for the stock model too.
-            # NLLB-derived models share the NLLB tokenizer, so load it directly.
+        if self.nllb_tokenizer:
             from transformers import NllbTokenizerFast
             self._tokenizer = NllbTokenizerFast.from_pretrained(self.model_name, src_lang=self.src_lang)
+        else:
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, src_lang=self.src_lang)
+            except AttributeError:
+                # transformers 5.0.0's AutoTokenizer cannot resolve the NLLB/m2m_100
+                # tokenizer class (saved as "TokenizersBackend") and raises
+                # AttributeError deep in auto-resolution — for the stock model too.
+                # NLLB-derived models share the NLLB tokenizer, so load it directly.
+                from transformers import NllbTokenizerFast
+                self._tokenizer = NllbTokenizerFast.from_pretrained(self.model_name, src_lang=self.src_lang)
         self._model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model.to(self._device)

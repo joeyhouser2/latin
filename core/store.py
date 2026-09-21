@@ -146,12 +146,21 @@ class Store:
         )
         self.conn.commit()
 
-    def set_translations(self, pairs: Iterable[tuple]) -> None:
-        """Bulk-write (segment_id, english_text) pairs in one transaction."""
+    def set_translations(self, pairs: Iterable[tuple], reset_styled: bool = False) -> None:
+        """Bulk-write (segment_id, english_text) pairs in one transaction.
+
+        reset_styled=True also clears english_styled/style_label -- use it when
+        *re*-translating, since styling derived from the old English is stale."""
+        pairs = list(pairs)
         self.conn.executemany(
             "UPDATE segments SET english_text = ? WHERE id = ?",
             [(en, sid) for sid, en in pairs],
         )
+        if reset_styled:
+            self.conn.executemany(
+                "UPDATE segments SET english_styled = NULL, style_label = NULL WHERE id = ?",
+                [(sid,) for sid, _ in pairs],
+            )
         self.conn.commit()
 
     def set_styled(self, triples: Iterable[tuple]) -> None:
