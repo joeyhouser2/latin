@@ -19,7 +19,8 @@ routing existed, re-translate *only* the German ones (Latin untouched):
     python scripts/translate_pending.py --doc-id 423 --retranslate-german --dry-run
     python scripts/translate_pending.py --source-prefix "Internet Archive (analectahymnica" --retranslate-german
 A re-translation first backs corpus.db up (sqlite backup API, safe alongside
-other writers) to data/corpus.db.bak-preGermanRetranslate-<timestamp>.
+other writers) to data/corpus.db.bak-preGermanRetranslate-<timestamp>, or
+reuses one taken in the last few hours (the UI queues a job per document).
 """
 from __future__ import annotations
 
@@ -45,6 +46,32 @@ def _is_german_segment(text: str) -> bool:
     return not is_garbled(text) and not _GREEK_CHAR.search(text) and is_german(text)
 
 
+BACKUP_REUSE_HOURS = 6
+
+
+def _backup_before_retranslate(db_path: str) -> None:
+    """Keep a restorable copy before overwriting translations. Uses the sqlite
+    backup API (safe with WAL and concurrent writers), never a file copy.
+
+    The web UI queues one job per selected document, so a recent backup is
+    reused rather than writing a ~200 MB copy per document: re-translation
+    only rewrites German segments, deterministically, so the backup taken
+    before the first job of a batch is the one worth restoring from."""
+    folder = os.path.dirname(os.path.abspath(db_path))
+    prefix = os.path.basename(db_path) + ".bak-preGermanRetranslate-"
+    recent = [os.path.join(folder, f) for f in os.listdir(folder) if f.startswith(prefix)]
+    recent = [f for f in recent if time.time() - os.path.getmtime(f) < BACKUP_REUSE_HOURS * 3600]
+    if recent:
+        print(f"Using recent backup {max(recent, key=os.path.getmtime)}", flush=True)
+        return
+    backup = f"{db_path}{prefix[len(os.path.basename(db_path)):]}{time.strftime('%Y%m%d%H%M%S')}"
+    src, dest = sqlite3.connect(db_path), sqlite3.connect(backup)
+    src.backup(dest)
+    dest.close()
+    src.close()
+    print(f"Backed up corpus to {backup}", flush=True)
+
+
 def retranslate_german(lib, docs, args):
     """Re-translate already-translated German segments with the German
     translator. Only segments that is_german() flags are read or written;
@@ -67,13 +94,7 @@ def retranslate_german(lib, docs, args):
     if args.dry_run or not total:
         return
 
-    # This overwrites existing translations, so keep a restorable copy. The
-    # backup API (not a file copy) is safe with WAL and concurrent writers.
-    backup = f"{lib.db_path}.bak-preGermanRetranslate-{time.strftime('%Y%m%d%H%M%S')}"
-    dest = sqlite3.connect(backup)
-    lib.store.conn.backup(dest)
-    dest.close()
-    print(f"Backed up corpus to {backup}", flush=True)
+    _backup_before_retranslate(lib.db_path)
 
     tr = lib.german_translator()
     if hasattr(tr, "max_length"):
