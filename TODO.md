@@ -19,15 +19,17 @@ Newest decisions at the top of each section.
 
 - [ ] **Bulk-ingest the 200s–900s reading library** — DigilibLT (late-antique) + Patrologia Latina via Corpus Corporum (patristic→Carolingian) + First1KGreek (patristic Greek). Run ingests with `CUDA_VISIBLE_DEVICES=""` while GPUs train.
 - [ ] **Re-translate existing stock-translated docs** with the fine-tuned models (Einhard etc. still show seed-time stock NLLB; currently *deferred* by choice).
-- [ ] **More connectors** — MGH (medieval), CAMENA/CroALa (Neo-Latin), Documenta Catholica Omnia (patristic), EDH (epigraphy). The generic `tei` connector already covers many TEI sources given a URL.
+- [ ] **More connectors** — Documenta Catholica Omnia (patristic), EDH (epigraphy). MGH, CAMENA/CroALa, DBBE, archive.org and `treatises`/`gallica` (financial & commercial prose) are done; the generic `tei` connector covers many TEI sources given a URL.
 - [ ] **Improve DigilibLT extraction** — some works (e.g. scholia) parse to ~1 segment; the TEI parsing needs work for unusual structures. Prefer specific `DLT…` ids over bulk `canone` for now.
 
 ## Reader / UI
 
-- [ ] **Chapter / section navigation** in the reader (jump by book/chapter; currently one long scroll).
-- [ ] **Reader controls** — "show original only" toggle, bookmarks, export (e.g. to .docx/.txt).
-- [ ] **Bulk-translate action** — "translate this whole document / all untranslated docs" from the UI (currently per-doc button).
+- [x] **Chapter / section navigation** — done in the web app (`web/`): a section picker plus paged segment loading. The Gradio reader (`app.py`) is still one long scroll.
+- [ ] **Reader controls** — "show original only" toggle, bookmarks. Plain-text export is done (`/api/documents/{id}/export`); .docx is not.
+- [x] **Bulk-translate action** — done in the web app: select works and queue them, or queue one job covering a whole filter. Jobs run one at a time via `web/jobs.py`.
 - [ ] **Manuscript image viewer** — show the IIIF page image alongside the text (pairs with Phase 5 below).
+
+- [ ] **Gallica full text** — the SRU catalogue is open but every text endpoint is behind an ALTCHA bot check, so `gallica` can only catalogue. Options: match Gallica hits to archive.org copies automatically, or hand-download and ingest with `file`.
 
 ## Search / discovery
 
@@ -53,11 +55,11 @@ Newest decisions at the top of each section.
 
 ## Productionization (if it grows past a personal tool)
 
-- [ ] **Real web app** — replace Gradio with a FastAPI backend + a proper reader frontend (React), keeping the existing `core/` + `pipeline.py` service layer unchanged.
+- [x] **Real web app** — `web/` is a FastAPI backend + a no-build frontend (`web/static/`), over the unchanged `core/` + `pipeline.py` layer: document browser with progress, reader, file browser, catalogue search, job queue. Launch with `python scripts/serve.py` or `Latin Library.bat`. Still single-user and unauthenticated — bind beyond localhost only behind something that authenticates.
 - [ ] **Scalable storage** — move from SQLite + a single FAISS file to Postgres + pgvector (or Qdrant/LanceDB) once the corpus grows large; persistent index updates instead of full rebuilds.
 - [ ] **Accounts & state** — user accounts, saved/bookmarked passages, reading history, per-user collections.
 - [ ] **Serving the models** — host the fine-tuned translators behind a small inference service (batched, cached) rather than loading them in-process.
-- [ ] **Deployment** — containerize, pick hosting, add background workers for ingest/translation jobs.
+- [ ] **Deployment** — containerize, pick hosting. Background workers exist locally (`web/jobs.py`: one job at a time, persisted in `data/jobs.db`, resumable, cancellable); a hosted version would need a real broker and auth.
 
 ## Housekeeping
 

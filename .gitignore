@@ -5,11 +5,26 @@ __pycache__/
 
 # Project data artifacts (rebuildable from sources)
 data/*.db
+# SQLite sidecars, and the pre-fix safety backups scripts write beside corpus.db
+# (100-200 MB each -- over GitHub's 100 MB file limit)
+data/*.db-wal
+data/*.db-shm
+data/*.db.bak-*
+data/*.lock
+# harvest/stylize run logs
+data/_*.log
+# Shared record of what's been translated/summarized IS committed: data/ledger/
 data/*.faiss
 data/*.index
 data/*.passages.json
 # mined parallel corpora (rebuildable via scripts/mine_parallel.py)
 data/parallel/
+# job queue logs written by the web app (web/jobs.py)
+data/joblogs/
+# connector mirrors, re-downloadable (ingest/capitularia.py, ingest/celt.py)
+data/raw/capitularia/
+data/raw/celt/
+data/raw/vernacular/
 # fine-tuned translation checkpoints (downloaded/retrained; never commit)
 models/
 

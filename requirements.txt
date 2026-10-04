@@ -12,7 +12,9 @@ sentence-transformers>=2.2.0  # search embedder + LaBSE for the cross-lingual al
 faiss-cpu>=1.7.4  # faiss-gpu requires conda on Windows
 
 # Web interface
-gradio>=4.0.0
+gradio>=4.0.0        # legacy reader (app.py)
+fastapi>=0.110.0     # web app backend (web/server.py)
+uvicorn>=0.27.0      # ASGI server used by scripts/serve.py
 
 # Utilities
 numpy>=1.24.0

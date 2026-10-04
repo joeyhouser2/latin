@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latin Library</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/latin-library.ico" sizes="any">
+<link rel="apple-touch-icon" href="/logo-256.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="side">
+    <h1><img src="/logo.svg" alt="" width="30" height="30">
+        <span>Latin Library<small>reader · corpus · jobs</small></span></h1>
+    <button data-view="library" class="active">Documents</button>
+    <button data-view="reader">Reader</button>
+    <button data-view="files">Files</button>
+    <button data-view="catalog">Find texts</button>
+    <button data-view="summaries">Summaries</button>
+    <button data-view="jobs">Jobs</button>
+    <button data-view="search">Search</button>
+    <div class="totals" id="totals"></div>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="jobchip" class="jobchip" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

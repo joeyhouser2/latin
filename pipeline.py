@@ -39,7 +39,12 @@ TRANSLATOR_MODELS = {
     # falls back to the general Greek default below.
     ("grc", "archaic"): [("models/nllb-greek-archaic", "ell_Grek", True)],
 }
-STOCK_SRC = {"la": "lat_Latn", "grc": "ell_Grek"}
+STOCK_SRC = {"la": "lat_Latn", "grc": "ell_Grek",
+             # Vernaculars: stock NLLB, no fine-tuned models. Old stages (Middle
+             # High German, Middle Dutch, Old Church Slavonic-ish Russian) are far
+             # from what NLLB trained on -- expect rougher output than modern text.
+             "de": "deu_Latn", "fr": "fra_Latn", "it": "ita_Latn", "nl": "nld_Latn",
+             "pl": "pol_Latn", "hu": "hun_Latn", "ru": "rus_Cyrl"}
 # German editorial apparatus embedded in Latin editions (e.g. Dreves/Blume's
 # Analecta Hymnica) goes to stock NLLB as German -- see ingest/german_detect.py.
 GERMAN_SRC = "deu_Latn"
@@ -243,7 +248,10 @@ class Library:
                     preprocess=strip_greek_diacritics if normalize else None,
                 )
         print(f"No fine-tuned {language}/{language_stage} model found; using stock NLLB.")
-        return NLLBTranslator(src_lang=STOCK_SRC.get(language, "lat_Latn"))
+        # NLLB's real language codes need the NllbTokenizerFast workaround (see
+        # german_translator); lat_Latn/ell_Grek keep the legacy path.
+        return NLLBTranslator(src_lang=STOCK_SRC.get(language, "lat_Latn"),
+                              nllb_tokenizer=language not in ("la", "grc"))
 
     def translate_document(self, doc_id: int, batch_size: int = 8) -> int:
         """Translate every untranslated segment of a document. Returns count."""

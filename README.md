@@ -79,6 +79,118 @@ works. Data persists in `data/corpus.db` (text + metadata) and
 
 > The original RAG demo (`rag_ui.py`) is still present but superseded by `app.py`.
 
+### Run the Web App (browse, read, queue jobs)
+
+```bash
+python scripts/serve.py          # http://127.0.0.1:8000, opens a browser
+```
+
+On Windows, double-click **`Latin Library.bat`** instead, or put a shortcut on the
+Desktop once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_shortcut.ps1
+powershell -ExecutionPolicy Bypass -File scripts\install_shortcut.ps1 -StartMenu
+```
+
+The launcher prefers `latinvenv\Scripts\python.exe` when it exists, because the
+interpreter that runs the server is also the one that runs the jobs — and the
+jobs want the CUDA build of torch.
+
+The logo — a rubricated versal **L** on parchment, the illuminated initial a scribe
+would put at the head of a text — is generated, not hand-drawn twice:
+
+```bash
+python scripts/make_logo.py                 # logo.svg, favicon.svg, latin-library.ico, logo-256.png
+python scripts/make_logo.py --concept codex # or: versal (default), scriptorium, pilcrow
+python scripts/make_logo.py --sheet out.png # compare every concept at 256/64/32/16 px
+```
+
+[scripts/make_logo.py](scripts/make_logo.py) defines the mark once as primitive shapes
+in a 64×64 grid and renders it twice: to SVG for the page and favicon, and through
+Pillow to a multi-size `.ico` for the Windows shortcut. Each concept also declares a
+*small* variant — the versal drops its keyline and gold corner dots below 24px, where
+they would otherwise turn the letterform to mush. After changing the logo, re-run
+`scripts/install_shortcut.ps1` so the Desktop shortcut picks up the new icon.
+
+What it does that `app.py` does not:
+
+| Tab | |
+|---|---|
+| **Documents** | Every work, filtered by language, era, source, or *our* progress (untranslated / partial / translated / unstyled), with a per-document translated bar. Select works and queue them, or queue one job covering the whole filter. |
+| **Reader** | Latin/English side by side, literal or stylized, with a section picker — and a "translate sections 2–5" button, so a 181-part folio can be sampled before committing the GPU to all of it. |
+| **Files** | Read-only browse of `data/`, `models/`, `docs/`: raw OCR dumps, id lists, harvest logs, PDF exports, with previews and downloads. SQLite and FAISS files are listed but never served — see the warning below. |
+| **Find texts** | Search a connector's catalogue *without ingesting*, then queue the ones you want (see `treatises` below). |
+| **Summaries** | Search LLM-written summaries of every summarized work *and each part of it* — keyword and meaning combined. Hits open the reader at the right part. |
+| **Jobs** | The queue: which GPU each job is on, live progress parsed from each script's own output, log tail, cancel, requeue. |
+| **Search** | The same cross-lingual semantic search as the Gradio app. The embedder and the ~600MB index load lazily on the first query. |
+
+**Jobs** are subprocess invocations of the existing scripts
+(`translate_pending.py`, `stylize_library.py`, `ingest.py`, `reindex.py`,
+`summarize.py`), queued in `data/jobs.db` with logs under `data/joblogs/`. A job can
+carry a "start after" time, so an overnight run can be lined up during the day.
+Because the scripts are resumable, cancelling and requeueing is always safe. Closing
+the browser does not stop a running job; closing the server's console window does
+(the job shares that console), and it comes back as **interrupted** with a requeue
+button that resumes from the last committed chunk.
+
+**Scheduling: one job per GPU, one corpus writer at a time.** Every job is pinned
+to its own card (`CUDA_VISIBLE_DEVICES` set to the card's *UUID* — `nvidia-smi` and
+CUDA number the cards in different orders on this machine, so an index could put two
+jobs on one card). On top of that, only one job that writes `corpus.db` runs at a
+time. So translations still queue behind each other, but a summary — which only
+reads the corpus — starts on whichever card the translation isn't using. Blocked jobs
+are skipped over rather than waited on. Only one app instance runs the queue: a
+second launch just opens the running one, and a second server on another port serves
+pages but runs no jobs (an OS lock beside `jobs.db` enforces it).
+
+> The queue lives in its own SQLite file on purpose: a translation run holds
+> `corpus.db` open for hours from another process, and the web app must never be a
+> second writer on it. For the same reason the file browser refuses to serve
+> `corpus.db` — a byte copy taken while WAL is active is a torn file. Use the
+> `sqlite3` backup API.
+
+### Summaries (local LLM)
+
+`scripts/summarize.py` has a local LLM read each translated work — the original and
+the machine translation line by line, since the MT is weak and a 12B model reads Latin
+well enough to catch its mistakes — and write one summary per part plus one for the
+whole work, into `data/summaries.db`. Queue it from the reader (**Summarize**), the
+Documents tab (**Summarize selected**), or the Summaries tab (**Summarize everything
+translated**).
+
+```bash
+python scripts/summarize.py --doc-id 397                 # what the queue runs
+python scripts/summarize.py --all --min-translated 0.9   # every mostly-translated work
+python scripts/summarize.py --doc-id 397 --model qwen3:14b --source english
+```
+
+It uses [Ollama](https://ollama.com) (default model `gemma4:12b`, plus
+`nomic-embed-text` for meaning search), but not the Ollama service you already
+run: each job starts a **private** `ollama serve` on a free port, pinned to the job's
+card, and shuts it down afterwards. Two things had to be right for that pinning to
+be real, both found by testing rather than assumed:
+
+* **Vulkan off.** Ollama 0.34 also enumerates GPUs through Vulkan, which ignores
+  `CUDA_VISIBLE_DEVICES` — a server "pinned" to the 4070 SUPER loaded onto the 4060
+  Ti. The private server runs with `OLLAMA_VULKAN=false`.
+* **No orphaned runners.** Killing `ollama serve` on Windows does not kill its
+  `llama-server.exe`, which then holds ~8 GB of VRAM with no owner. The server runs
+  inside a kill-on-close Job Object, so the runner dies with the job *however* it
+  dies (verified with a hard kill).
+
+Parts are saved as they finish, so a cancelled job resumes where it stopped. It opens
+`corpus.db` read-only, which is what lets it run beside a translation.
+
+> **Sharing a card with other Ollama work.** The private server controls where *its*
+> model goes, not where the shared Ollama service puts yours. If another project loads
+> a large model through the shared service onto the card a summary is using, both
+> models together overflow VRAM, Windows pages memory to system RAM, and generation
+> drops ~40× (seen in testing: 7.6 s per chunk became 240 s). Cancel and requeue: the
+> scheduler picks the card with the most free memory at claim time, and finished parts
+> are kept.
+
+
 ### Use as a Library
 
 ```python
@@ -132,6 +244,11 @@ python scripts/ingest.py list          # show available sources
 | **Corpus Corporum** (Patrologia Latina, medieval) | `corpuscorporum` | text idno | text idnos under a corpus idno |
 | **Corpus Thomisticum** (complete Aquinas) | `corpusthomisticum` | page id / URL | work pages from an index |
 | **EDCS** (~542k Latin inscriptions) | `edcs` | search query (one Document per query) | — |
+| **Treatises** (financial/fiscal/commercial Latin & Greek) | `treatises` | `ia:<archive.org id>` | works matching a theme (`usury`, `money`, `exchange`, `commerce`, `tax`, `weights`, `accounting`, `economy`) or free text |
+| **Gallica** (BnF) — *catalogue only* | `gallica` | — (see below) | Latin works matching an SRU query |
+| **Capitularia** (Frankish royal capitularies, 507–9th c.) ✓ *verified translation status* | `capitularia` | `BK.139` / `Mordek.12` | `untranslated`, a reign (`pre814`, `ldf` = 814–840, `post840`), `all`, or title words |
+| **CELT** (Hiberno-Latin, Cork) ✓ *verified translation status* | `celt` | `L100003` | `untranslated`, `all`, or title/author words |
+| **Vernacular classics** (de/fr/it/nl/pl/hu/ru, medieval–Renaissance) | `vernacular` | catalogue key `pl:rej-zywot`, or `ws:<lang>:<Wikisource page>` | a language code or `all` |
 | Local plain text | `file` | `.txt` path | `.txt` files in a directory |
 
 ```bash
@@ -177,6 +294,96 @@ Metadata flags (`--author`, `--title`, `--century`, `--genre`, `--stage`,
 > Inscriptions carry heavy epigraphic markup (`Imp(erator)`, `[Aug]ustus`); the
 > display text keeps it, but a markup-stripped copy (`Imperator Augustus`) is what
 > gets embedded, so inscriptions search well. See *Embedding & re-indexing* below.
+
+### The Dull Books: `treatises`
+
+The corpus leans towards material people translate because they want to read it —
+poetry, liturgy, patristics. The `treatises` connector goes after the opposite:
+early-modern Latin (and some Greek) technical prose on money, interest, exchange,
+taxation, weights and accounting. *De usuris*, *De monetis*, *De cambiis*, *De
+vectigalibus populi Romani*. These are untranslated in the strong sense — nobody
+has ever wanted to read them in English, which is exactly why machine translation
+is the only way they ever will be.
+
+```bash
+python scripts/ingest.py treatises usury --discover --limit 10 --stage early_modern
+python scripts/ingest.py treatises ia:bub_gb_D2hqS7meY7YC        # Budel, De monetis (1591)
+python scripts/ingest.py treatises "de ponderibus" --discover --limit 5
+```
+
+Or use the web app's **Find texts** tab, which shows the catalogue with dates and
+a "has text" flag before you queue anything.
+
+It searches two catalogues, which do different jobs:
+
+* **archive.org** — searched by title against a built-in vocabulary per theme, and
+  the only one of the two that serves text. Its `bub_gb_*` items are Google Books
+  scans of exactly this literature. The fetch path goes through `/metadata/<id>`
+  first to find the item's real text derivative: roughly one item in five here is
+  an image-only scan with no OCR at all, and the naive `<id>_djvu.txt` URL that
+  `archiveorg` uses 404s on those.
+* **Gallica (BnF)** — catalogue only. The SRU search API is open (a single search
+  for *de usuris* in Latin returns 461 works), but every full-text endpoint now
+  sits behind an ALTCHA bot check that serves a JavaScript shell to scripts. So
+  `gallica`'s `fetch()` **raises** rather than returning text: the failure it
+  prevents is ingesting 50KB of French navigation chrome as a Latin treatise and
+  queueing it for translation. Use it to find works, then look for the same
+  edition on archive.org or download it by hand and ingest with `file`.
+
+Long OCR blobs are split into numbered ~1200-word sections. That is not tidiness:
+every scoped pass in this project (`--section-range`) works in sections, so a
+600-page folio arriving as one section is all-or-nothing — 40,000 segments or
+none. Chunking is what makes "translate part 1 and see whether the OCR is good
+enough" possible.
+
+> Expect noisy OCR. These are 16th–18th-century prints with long s, heavy
+> abbreviation and mixed Greek; the garble detector (`ingest/garble_detect.py`)
+> and the long-s repair tooling (`scripts/fix_long_s_ocr*.py`) exist for exactly
+> this material.
+
+### Verified translation status: `capitularia` and `celt`
+
+"Untranslated" is the claim this library exists to make, so these two connectors
+don't guess it — each checks the source's own scholarly record and stores the
+evidence with the document (`documents.translation_evidence`, shown under the title
+in the reader and in the Find-texts tab):
+
+```bash
+python scripts/ingest.py capitularia untranslated --discover --limit 400
+python scripts/ingest.py celt untranslated --discover
+```
+
+**Capitularia** (Cologne, `github.com/cceh/capitularia`) — 340 Merovingian and
+Carolingian capitularies, 264 of them 9th-century. Every capitulary record lists its
+published translations; each is resolved against the project bibliography and
+classified by language (the entry's own note — "enthält dt. Übersetzungen" — then
+its title, then its place of publication). English printed before 1929 →
+`translated` (public domain: Munro's 1900 *Laws of Charles the Great*); later English
+→ `translated_paywalled` (King 1987, Loyn 1975, Dutton 2004…); only non-English →
+`untranslated`. Result: **233 untranslated**, 54 in copyright, 17 public domain,
+36 unknown. The unknowns are honest: 68 capitularies cite *Domínguez 2014*, which is
+missing from the project's bibliography and couldn't be identified, so its language
+isn't guessed. Four standard English readers the bibliography omits (Hillgarth 1986,
+Fouracre & Gerberding 1996, McNamara 1992, Ehler & Morrall 1954) are supplied by
+hand and marked as such in the evidence. The text comes from the Boretius–Krause
+edition where the project has transcribed it and it is near-complete (211
+capitularies), otherwise from the fullest manuscript witness, with scribal deletions
+dropped, corrections kept and the editors' German notes removed.
+
+**CELT** (University College Cork) — 28 Hiberno-Latin texts. Two checks: CELT's own
+English twin (`T201040` translates `L201040`: 9 texts), then the text's bibliography
+— counting only *editions* lists, since every false positive in an audit of all 28
+came from secondary literature (a lecture titled *Translations and Adaptations in
+Irish*; unrelated Galen translations). Result: 13 translated, 3 in copyright, **12
+untranslated** — the Irish annals, *Vita Ite*, the hymn *Adelphus adelpha mater*, the
+*Regimen na Sláinte* texts, and others.
+
+> **Windows crash, fixed in `core/__init__.py`.** Any HTTPS request made before the
+> embedder first loads used to segfault the process when the embedder then pulled in
+> pyarrow (a DLL load-order clash) — no traceback, just exit 139. That hit
+> `scripts/ingest.py` for *every* network connector (it fetches, then embeds), and
+> would have hit the web server (Find texts, then Search). `core` now imports pyarrow
+> first; it is imported before any network activity by every entry point.
 
 ### Training Era-Specific Translators
 
@@ -234,6 +441,26 @@ ancient Greek canon.
 > The embedding model handles Greek script, so **Greek-query** search is strong, but
 > **English→ancient-Greek** cross-lingual search is weak (a model limitation). High-
 > quality Greek translation is future work (the translator is pluggable).
+
+### Vernacular Module
+
+`vernacular` brings famous medieval/Renaissance works in German, French, Italian,
+Dutch, Polish, Hungarian and Russian into the library, so English readers can
+reach what's canonical in those literatures but rarely translated. It is a curated
+catalogue (`ingest/vernacular.py::CATALOG`) pinned to Wikisource editions; add a
+work by adding an entry, and run `VernacularConnector().check()` to confirm each
+page resolves and isn't a stub. Documents carry `language` = `de`/`fr`/`it`/`nl`/
+`pl`/`hu`/`ru`, are segmented on `.?!` only (medieval `;`/`:` are clause marks), and
+translate via stock NLLB. Old stages (Middle High German, Middle Dutch, Old
+Hungarian, Old East Slavic) are far outside NLLB's training data, so treat output
+there as a rough gloss. `translation_status` is left `unknown` until
+`scripts/enrich_translation_status.py` checks it.
+
+```bash
+python scripts/ingest.py vernacular pl:rej-zywot --stage early_modern
+python scripts/ingest.py vernacular all --discover
+python scripts/translate_pending.py --language pl
+```
 
 ### Embedding & Re-indexing
 
@@ -776,3 +1003,20 @@ translations = translator.translate_batch(["text1", "text2"])
 - Translation: [NLLB-200](https://huggingface.co/facebook/nllb-200-distilled-600M)
 - Vector Search: [FAISS](https://github.com/facebookresearch/faiss)
 - HTR: [Transkribus](https://readcoop.eu/transkribus/), [TrOCR](https://huggingface.co/microsoft/trocr-base-handwritten)
+## Working on more than one computer
+
+`corpus.db` / `summaries.db` are local and gitignored. What *is* committed is a
+small ledger of work already done, `data/ledger/*.jsonl`, keyed by
+`documents.source` (not the local `id`):
+
+```
+git pull
+python scripts/ledger.py sync      # import others' summaries, fold in this machine's progress
+python scripts/ledger.py status --list 20
+python scripts/translate_pending.py --skip-done-elsewhere ...
+# ...work...
+python scripts/ledger.py sync && git add data/ledger && git commit
+```
+
+The ledger records *that* a document is translated (and how much), and carries
+summaries whole; it does not carry the English text itself.

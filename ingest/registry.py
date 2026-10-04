@@ -25,6 +25,13 @@ from .musamedievalis import MusaMedievalisConnector
 from .croala import CroALaConnector
 from .camena import CAMENAConnector
 from .archive_org import ArchiveOrgConnector
+from .dbbe import DBBEConnector
+from .gallica import GallicaConnector
+from .treatises import TreatisesConnector
+from .capitularia import CapitulariaConnector
+from .celt import CELTConnector
+from .sutton import SuttonConnector
+from .vernacular import VernacularConnector
 
 
 _REGISTRY: Dict[str, Callable[[], Connector]] = {
@@ -47,6 +54,13 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     CroALaConnector.name: CroALaConnector,
     CAMENAConnector.name: CAMENAConnector,
     ArchiveOrgConnector.name: ArchiveOrgConnector,
+    DBBEConnector.name: DBBEConnector,
+    GallicaConnector.name: GallicaConnector,
+    TreatisesConnector.name: TreatisesConnector,
+    CapitulariaConnector.name: CapitulariaConnector,
+    CELTConnector.name: CELTConnector,
+    SuttonConnector.name: SuttonConnector,
+    VernacularConnector.name: VernacularConnector,
 }
 
 

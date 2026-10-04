@@ -151,6 +151,9 @@ def main():
     ap.add_argument("--skip-translated", action="store_true",
                     help="skip docs already known to have a published English "
                          "translation (translation_status == 'translated')")
+    ap.add_argument("--skip-done-elsewhere", action="store_true",
+                    help="skip documents the shared ledger (data/ledger) records as "
+                         "fully translated on another computer")
     ap.add_argument("--batch-size", type=int, default=16, help="model batch size")
     ap.add_argument("--chunk", type=int, default=200,
                     help="segments per DB commit (resume granularity)")
@@ -174,6 +177,14 @@ def main():
         docs = [d for d in docs if d.language == args.language]
     if args.skip_translated:
         docs = [d for d in docs if d.translation_status != "translated"]
+    if args.skip_done_elsewhere:
+        # Fully translated on another machine, per the committed ledger
+        # (scripts/ledger.py). Anything already finished here is a no-op anyway.
+        from core.ledger import done_elsewhere_sources
+        done = done_elsewhere_sources()
+        before = len(docs)
+        docs = [d for d in docs if d.source not in done]
+        print(f"Ledger: skipping {before - len(docs)} documents already translated elsewhere")
 
     if args.retranslate_german:
         retranslate_german(lib, docs, args)

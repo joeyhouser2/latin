@@ -22,7 +22,11 @@ LANGUAGE_STAGES = ("archaic", "classical", "late_antique", "medieval",
                    "early_modern", "ancient", "unknown")
 
 # Primary language of a work's text (ISO-ish). "la" = Latin, "grc" = ancient Greek.
-LANGUAGES = {"la": "Latin", "grc": "Greek"}
+# The rest are the vernaculars of medieval/early-modern Europe (ingest/vernacular.py):
+# the stage field says how old the stage of the language is, the code says which one.
+LANGUAGES = {"la": "Latin", "grc": "Greek", "de": "German", "fr": "French",
+             "it": "Italian", "nl": "Dutch", "pl": "Polish", "hu": "Hungarian",
+             "ru": "Russian"}
 
 
 @dataclass
@@ -80,6 +84,7 @@ class Document:
     license: Optional[str] = None
     has_existing_translation: bool = False  # is a known English translation already published?
     translation_status: str = "unknown"     # "translated" | "untranslated" | "unknown" (see ingest.translation_status)
+    translation_evidence: Optional[str] = None  # why the status says what it says: source + citation
     sections: List[Section] = field(default_factory=list)
     id: Optional[int] = None
 

@@ -37,6 +37,7 @@ def _meta_from_args(args) -> dict:
     if args.stage:           meta["language_stage"] = args.stage
     if args.language:        meta["language"] = args.language
     if args.has_translation: meta["has_existing_translation"] = True
+    if args.translation_status: meta["translation_status"] = args.translation_status
     return meta
 
 
@@ -73,9 +74,12 @@ def main():
     ap.add_argument("--century", type=int)
     ap.add_argument("--genre")
     ap.add_argument("--stage", help="classical|late_antique|medieval|early_modern|ancient|unknown")
-    ap.add_argument("--language", help="primary language: la (Latin) or grc (Greek)")
+    ap.add_argument("--language", help="primary language: la, grc, de, fr, it, nl, pl, hu, ru")
     ap.add_argument("--has-translation", action="store_true",
                     help="flag the work as already having an English translation")
+    ap.add_argument("--translation-status",
+                    choices=["translated", "translated_paywalled", "untranslated", "unknown"],
+                    help="set translation_status directly (keeps has_existing_translation in sync)")
     args = ap.parse_args()
 
     if args.source == "list":
