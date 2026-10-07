@@ -248,6 +248,10 @@ python scripts/ingest.py list          # show available sources
 | **Gallica** (BnF) — *catalogue only* | `gallica` | — (see below) | Latin works matching an SRU query |
 | **MDZ** (Bayerische Staatsbibliothek, scanned early-modern prints) | `mdz` | `bsb12188295`, or `bsb…#ocr=tesseract&pages=1-40` | — (see below) |
 | **Page images → Tesseract OCR** (folder from `iiif_downloader.py`, or any IIIF manifest URL) | `ocrimages` | directory, or manifest URL `#pages=1-40` | — |
+| **VD17 / VD18** (German-region imprints 1601–1800, K10plus SRU) | `vd` | `vd17:<PPN>` / `vd18:<PPN>` | free words (title), or raw `pica.` CQL; `vd17:` / `vd18:` prefix picks one |
+| **Europeana** (aggregator; open-licence Latin text) | `europeana` | `/1613/item_…` | free-text query (set `EUROPEANA_API_KEY`) |
+| **Google Books** (catalogue → archive.org `bub_gb_` mirror) | `googlebooks` | Books id or URL | free-text query (set `GOOGLE_BOOKS_API_KEY`) |
+| **IIIF** (any manifest: Vatican, e-codices, BL, Parker, Heidelberg, Göttingen…; print *and* manuscripts) | `iiif` | manifest URL, `vatlib:Vat.lat.3773`, `ecodices:csg-0390`, `bnf:…`, `bodleian:…` | — |
 | **Capitularia** (Frankish royal capitularies, 507–9th c.) ✓ *verified translation status* | `capitularia` | `BK.139` / `Mordek.12` | `untranslated`, a reign (`pre814`, `ldf` = 814–840, `post840`), `all`, or title words |
 | **CELT** (Hiberno-Latin, Cork) ✓ *verified translation status* | `celt` | `L100003` | `untranslated`, `all`, or title/author words |
 | **Vernacular classics** (de/fr/it/nl/pl/hu/ru, medieval–Renaissance) | `vernacular` | catalogue key `pl:rej-zywot`, or `ws:<lang>:<Wikisource page>` | a language code or `all` |
@@ -343,6 +347,31 @@ It searches two catalogues, which do different jobs:
   **print only** — on handwriting it produces fluent-looking noise, so both
   connectors refuse text with almost no Latin function words. Manuscripts need
   HTR (see the Manuscripts section).
+
+* **Catalogues that point at scans (VD17/18, Europeana, Google Books)** — these
+  record *where* a book is and let `ingest/copies.py` route each digital-copy link
+  to a connector that can read that host (MDZ, archive.org, or a IIIF manifest on
+  Heidelberg / Göttingen / e-codices / Vatican / Goobi viewers / MPI). A record
+  whose only link is a viewer page we cannot read raises `NoReadableCopy` and lists
+  the links. In a 60-record VD17 sample about a third routed straight to MDZ.
+  Options pass through after `#`: `vd17:005436001#pages=1-30`.
+* **`iiif` picks its engine from the pages.** It OCRs three sample pages with
+  Tesseract; if they read as Latin it is print and Tesseract does the rest,
+  otherwise it is treated as handwriting and goes to HTR (`ingest/htr.py`).
+  `#mode=print|htr` overrides. Handwriting runs **Kraken + the CATMuS Medieval
+  model** in an isolated `.venv-htr` (own torch), on whichever GPU has the most
+  free memory (~15 s/page on a 4070-class card; CPU works but takes minutes per
+  page). Output is graphematic, so `ingest/abbrev.py` then expands it: unambiguous
+  glyphs (ȩ ꝑ ⁊ ꝓ), macron/`&` endings (resolved against the corpus vocabulary),
+  nomina sacra, scribal run-togethers ("inmulieribus"), and drops the junk lines
+  the model invents over neumes and stains. The raw transcription stays in
+  `data/raw/iiif_*/htr.json`. Still heuristic — it makes text translatable, not
+  edited. Setup is in the `ingest/htr.py` docstring.
+* **Not built, and why.** HathiTrust (Cloudflare challenge on every endpoint),
+  ISTC/CERL, Biblissima and USTC (bot-check / login walls) cannot be read by a
+  script without defeating those checks, which this project does not do — find
+  the copy there by hand and pass the manifest or archive.org id to `iiif` /
+  `treatises`. VD16 is not exposed on the SRU endpoint.
 
 Long OCR blobs are split into numbered ~1200-word sections. That is not tidiness:
 every scoped pass in this project (`--section-range`) works in sections, so a

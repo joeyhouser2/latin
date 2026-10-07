@@ -29,7 +29,9 @@ Newest decisions at the top of each section.
 - [x] **Bulk-translate action** — done in the web app: select works and queue them, or queue one job covering a whole filter. Jobs run one at a time via `web/jobs.py`.
 - [ ] **Manuscript image viewer** — show the IIIF page image alongside the text (pairs with Phase 5 below).
 
-- [x] **MDZ + image OCR** — `mdz` (library hOCR, Tesseract fallback) and `ocrimages` (folder / IIIF manifest -> Tesseract) are built; no MDZ `discover()` (search page is client-rendered). Still to do: HathiTrust/Google Books page text, Biblissima/VD16-18/USTC/ISTC catalogue connectors, and HTR for manuscripts (Kraken/eScriptorium).
+- [x] **Scan connectors** — `mdz`, `ocrimages`, `vd` (VD17/18), `europeana`, `googlebooks`, generic `iiif` (print via Tesseract, manuscripts via Kraken HTR + `ingest/abbrev.py`). Walled sources (HathiTrust, ISTC/CERL, Biblissima, USTC) deliberately not scraped.
+- [ ] **HTR quality** — evaluate CATMuS on more hands/centuries; fine-tune on Latin-only ground truth; abbreviation expansion by a model rather than rules; Fraktur/German-mixed prints need `frk` for Tesseract (VD17 German-heavy items come out garbled); drop-cap and neume noise.
+- [ ] **Run HTR for real** — pick a manuscript, transcribe whole thing, ingest, translate, and read the result critically.
 - [ ] **Gallica full text** — the SRU catalogue is open but every text endpoint is behind an ALTCHA bot check, so `gallica` can only catalogue. Options: match Gallica hits to archive.org copies automatically, or hand-download and ingest with `file`.
 
 ## Search / discovery

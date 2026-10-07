@@ -38,6 +38,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from . import abbrev
 from .base import Connector, RawWork
 from .iiif_meta import bibliographic_meta, download_manifest_pages
 from .ocr_images import (assemble, check_latin, ocr_image, ocr_pages,
@@ -161,7 +162,10 @@ class IIIFConnector(Connector):
         if not htr.available():
             raise HTRUnavailable(htr.SETUP_HINT)
         texts = htr.transcribe_images(paths, cache_path=str(work_dir / "htr.json"))
-        pages = [texts[key(p)] for p in paths]
+        # HTR is graphematic; expand abbreviations so the text can be translated
+        # (the raw transcription stays in htr.json beside the page images)
+        vocab = abbrev.build_vocab()
+        pages = [abbrev.expand_text(texts[key(p)], vocab) for p in paths]
         return "htr", pages, latin_function_word_rate("\n".join(pages))
 
 
