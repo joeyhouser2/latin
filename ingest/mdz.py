@@ -241,6 +241,8 @@ class MDZConnector(Connector):
                 print("  (try #ocr=tesseract on a few pages and compare)", file=sys.stderr)
         meta["_ocr_latin_rate"] = rate
         meta["_ocr_engine"] = mode
+        if "source" in meta and "[OCR:" not in meta["source"]:
+            meta["source"] += f" [OCR: {'library' if mode == 'mdz' else mode}]"
         return meta, assemble(ordered, self.section_words)
 
     def _library_ocr(self, item: str, canvases: List[dict], sel: range) -> Dict[int, str]:

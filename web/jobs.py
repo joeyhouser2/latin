@@ -198,8 +198,35 @@ def _stylize_argv(p: Dict[str, Any]) -> List[str]:
     return argv
 
 
+# What the UI calls an OCR engine -> the options the scan connectors understand.
+# `mdz` reads `ocr`, `iiif` reads `mode`; each ignores the other's key.
+OCR_ENGINES = {
+    "auto": {},                                     # let the connector decide
+    "library": {"ocr": "mdz"},                      # the library's own OCR (MDZ hOCR)
+    "print": {"ocr": "tesseract", "mode": "print"},  # Tesseract (Latin / Fraktur)
+    "htr": {"mode": "htr", "ocr": "tesseract"},     # handwriting recognition (Kraken)
+}
+
+
+def ocr_fragment(p: Dict[str, Any]) -> str:
+    """``#key=val&...`` for the scan connectors from the job's ocr/pages params."""
+    engine = p.get("ocr") or "auto"
+    if engine not in OCR_ENGINES:
+        raise ValueError(f"ocr must be one of {sorted(OCR_ENGINES)}, not {engine!r}")
+    opts = dict(OCR_ENGINES[engine])
+    if p.get("pages"):
+        pages = str(p["pages"]).strip()
+        if not re.fullmatch(r"\d*-?\d*", pages):
+            raise ValueError(f"pages must look like 1-40, not {pages!r}")
+        opts["pages"] = pages
+    return "#" + "&".join(f"{k}={v}" for k, v in opts.items()) if opts else ""
+
+
 def _ingest_argv(p: Dict[str, Any]) -> List[str]:
-    argv = [sys.executable, "-u", "scripts/ingest.py", p["source"], p["identifier"]]
+    ident = p["identifier"]
+    if "#" not in ident:                 # an explicit fragment from the user wins
+        ident += ocr_fragment(p)
+    argv = [sys.executable, "-u", "scripts/ingest.py", p["source"], ident]
     _flag(argv, "--discover", p.get("discover"))
     _flag(argv, "--limit", p.get("limit"))
     _flag(argv, "--author", p.get("author"))
@@ -658,6 +685,7 @@ class JobQueue:
                    CUDA_DEVICE_ORDER="PCI_BUS_ID")
         if run.gpu is not None:
             env["CUDA_VISIBLE_DEVICES"] = run.gpu.uuid
+            env["LATIN_GPU_PINNED"] = "1"     # ingest.htr must not re-pick a card
 
         creationflags = 0
         if os.name == "nt":
@@ -771,7 +799,11 @@ def _describe(kind: str, params: Dict[str, Any]) -> str:
         return f"Summarize: {scope}" + (f" ({params['model']})" if params.get("model") else "")
     if kind == "ingest":
         what = params.get("identifier", "")
-        return f"Ingest {params.get('source')}: {what[:60]}" + (" (discover)" if params.get("discover") else "")
+        ocr = params.get("ocr")
+        extra = ((" (discover)" if params.get("discover") else "")
+                 + (f" [OCR: {ocr}]" if ocr and ocr != "auto" else "")
+                 + (f" pp.{params['pages']}" if params.get("pages") else ""))
+        return f"Ingest {params.get('source')}: {what[:60]}{extra}"
     spec = JOB_KINDS.get(kind)
     return spec.description if spec else kind
 

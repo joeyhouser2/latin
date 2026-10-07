@@ -123,6 +123,7 @@ class IIIFConnector(Connector):
             paths, work_dir, mode, lang, psm, workers)
         meta["_ocr_engine"] = engine
         meta["_ocr_latin_rate"] = rate
+        meta["source"] += f" [OCR: {engine}]"
         if engine == "tesseract":
             meta["language"] = german_or_latin(stats) if "latin_rate" in stats \
                 else meta.get("language", "la")

@@ -367,6 +367,13 @@ It searches two catalogues, which do different jobs:
   the model invents over neumes and stains. The raw transcription stays in
   `data/raw/iiif_*/htr.json`. Still heuristic — it makes text translatable, not
   edited. Setup is in the `ingest/htr.py` docstring.
+* **OCR in the web app.** Find-texts rows are flagged **text**, **scan · library OCR**
+  or **scan · OCR needed**; the OCR row above the table picks the engine (auto /
+  library / Tesseract / handwriting) and a page range for every ingest you queue,
+  and *Ingest by identifier* takes a `bsb…`, `ecodices:…`, `vatlib:…` or manifest
+  URL directly. Documents made from page images carry an **OCR** badge in the
+  library (the connectors stamp `[OCR: engine]` into `source`). Handwriting jobs
+  run on the card the queue pinned, not whichever is freest.
 * **Not built, and why.** HathiTrust (Cloudflare challenge on every endpoint),
   ISTC/CERL, Biblissima and USTC (bot-check / login walls) cannot be read by a
   script without defeating those checks, which this project does not do — find

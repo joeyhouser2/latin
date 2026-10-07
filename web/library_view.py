@@ -11,6 +11,7 @@ web.jobs), which keeps a single writer on the WAL database at any time.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 import time
@@ -207,6 +208,23 @@ class LibraryView:
             self.conn.close()
 
 
+_OCR_TAG = re.compile(r"\[OCR: ([^\]]+)\]")
+
+
+def ocr_of(source: Optional[str]) -> Optional[str]:
+    """How a document's text was made from page images, or None if it was not.
+
+    New scan connectors stamp ``[OCR: engine]`` into ``source``; older documents
+    (archive.org dumps, hand-fixed scans) are recognised by the word OCR.
+    """
+    if not source:
+        return None
+    m = _OCR_TAG.search(source)
+    if m:
+        return m.group(1)
+    return "ocr" if "OCR" in source else None
+
+
 def _doc_dict(row: sqlite3.Row, counts: Dict[str, int]) -> Dict[str, Any]:
     n = counts.get("segments", 0)
     tr = counts.get("translated", 0)
@@ -214,6 +232,7 @@ def _doc_dict(row: sqlite3.Row, counts: Dict[str, int]) -> Dict[str, Any]:
         "id": row["id"], "title": row["title"], "author": row["author"],
         "century": row["century"], "genre": row["genre"], "language": row["language"],
         "language_stage": row["language_stage"], "source": row["source"],
+        "ocr": ocr_of(row["source"]),
         "shelfmark": row["shelfmark"], "license": row["license"],
         "has_existing_translation": bool(row["has_existing_translation"]),
         "translation_status": row["translation_status"],

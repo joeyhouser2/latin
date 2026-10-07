@@ -86,10 +86,12 @@ def transcribe_images(paths: List[str], cache_path: Optional[str] = None,
         if py is None or not (model or MODEL).exists():
             raise RuntimeError(SETUP_HINT)
         env = dict(os.environ)
-        if device == "auto":
+        if device == "auto" and env.get("LATIN_GPU_PINNED"):
+            device = "cuda"                      # the job queue already chose a card
+        elif device == "auto":
             gpu = pick_gpu()
             device = f"cuda:{gpu}" if gpu is not None else "cpu"
-        if device.startswith("cuda"):
+        if device.startswith("cuda") and device != "cuda":
             env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"      # match nvidia-smi's numbering
             env["CUDA_VISIBLE_DEVICES"] = device.partition(":")[2] or "0"
         cmd = [str(py), str(WORKER), "--model", str(model or MODEL),

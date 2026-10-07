@@ -341,7 +341,7 @@ class ImageOCRConnector(Connector):
 
         meta = {
             "title": title,
-            "source": f"Page images OCR'd with Tesseract ({lang}): {base}",
+            "source": f"Page images OCR'd with Tesseract ({lang}): {base} [OCR: tesseract]",
             "language": german_or_latin(stats),
             "language_stage": "unknown",
             "license": "Depends on the image source -- check before redistributing",

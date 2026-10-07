@@ -21,7 +21,8 @@ const state = {
   readerView: 'literal',
   readerSection: '',
   files: { root: 'data', path: '', entries: [], preview: null },
-  catalog: { source: 'treatises', query: 'usury', items: [], loading: false },
+  catalog: { source: 'treatises', query: 'usury', items: [], loading: false,
+            identSource: 'mdz', ident: '' },
   jobs: [],
   jobLog: null,         // { id, text }
   search: { q: '', items: [], message: '' },
@@ -151,7 +152,8 @@ function viewLibrary() {
         <div class="sub">${esc(d.author || 'Anon.')}${d.century ? ' · ' + centuryLabel(d.century) : ''}
              · ${esc((d.source || '').slice(0, 42))}</div>
       </td>
-      <td><span class="badge ${esc(d.language)}">${d.language === 'grc' ? 'Greek' : 'Latin'}</span></td>
+      <td><span class="badge ${esc(d.language)}">${d.language === 'grc' ? 'Greek' : 'Latin'}</span>
+          ${d.ocr ? `<span class="badge queued" title="Text made from page images (${esc(d.ocr)}): expect misreadings">OCR${['htr','tesseract','library'].includes(d.ocr) ? ' · ' + esc(d.ocr) : ''}</span>` : ''}</td>
       <td class="muted">${esc((d.language_stage || '').replace('_', ' '))}</td>
       <td class="num">${num(d.segments)}</td>
       <td>${bar(d.translated, d.segments)}</td>
@@ -465,6 +467,50 @@ const THEMES = {
 };
 const THEME_LABELS = { pre814: 'to 814', ldf: 'Louis the Pious 814–840', post840: 'after 840' };
 
+/* "Text" column: is this finished text, or page images that still need reading? */
+function ocrBadge(r) {
+  if (!r.fetchable) return '<span class="badge">catalogue only</span>';
+  if (r.ocr === 'scan')
+    return '<span class="badge running" title="Page images only. Queuing runs OCR (print) or ' +
+           'handwriting recognition (manuscript) first.">scan · OCR needed</span>';
+  if (r.ocr === 'library')
+    return '<span class="badge queued" title="A scan. The library publishes its own OCR, which ' +
+           'is used by default; choose Tesseract below to re-read the images.">scan · library OCR</span>';
+  return '<span class="badge done">text</span>';
+}
+
+const OCR_ENGINES = [
+  ['auto', 'auto (decide from the pages)'],
+  ['library', 'library OCR (MDZ) — fast'],
+  ['print', 'Tesseract — printed books'],
+  ['htr', 'handwriting (HTR) — manuscripts, GPU'],
+];
+
+function ocrControls() {
+  const o = state.opts;
+  return `<div class="row">
+      <b>OCR</b>
+      <select data-opt="ocr">${OCR_ENGINES.map(([v, t]) =>
+        `<option value="${v}" ${(o.ocr || 'auto') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+      <label class="inline">pages <input data-opt="pages" value="${esc(o.pages || '')}"
+        placeholder="all, or 1-40" style="width:6.5rem"></label>
+      <span class="muted">applies to scan sources (mdz, iiif, vd, europeana, ocrimages); ignored for text sources</span>
+    </div>`;
+}
+
+function identForm() {
+  const c = state.catalog;
+  const sources = state.facets?.sources_available || [];
+  return `<div class="row">
+      <b>Ingest by identifier</b>
+      <select data-ident-source>${sources.map(s =>
+        `<option ${s === c.identSource ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
+      <input type="text" data-ident value="${esc(c.ident)}" style="min-width:22rem"
+        placeholder="e.g. bsb12188295 · ecodices:csg-0226 · vatlib:Vat.lat.3773 · a manifest URL">
+      <button class="btn" data-ingest-ident>Queue ingest</button>
+    </div>`;
+}
+
 function viewCatalog() {
   const c = state.catalog;
   const rows = c.items.map((r, i) => `
@@ -477,8 +523,7 @@ function viewCatalog() {
       </td>
       <td class="muted">${esc(r.catalogue || '')}</td>
       <td class="num muted">${esc(r.year ?? '')}</td>
-      <td>${r.fetchable ? '<span class="badge done">text</span>'
-                        : '<span class="badge">catalogue only</span>'}</td>
+      <td>${ocrBadge(r)}</td>
       <td>${r.translation_status
             ? `<span class="badge ${{translated: 'done', translated_paywalled: 'queued',
                  untranslated: 'running'}[r.translation_status] || ''}"
@@ -513,8 +558,11 @@ function viewCatalog() {
     ${THEMES[c.source] ? `<div class="row">${THEMES[c.source].map(t =>
         `<button class="chip ${t === c.query ? 'active' : ''}" data-theme="${t}">${esc(THEME_LABELS[t] || t)}</button>`).join('')}</div>` : ''}
 
+    ${ocrControls()}
+    ${identForm()}
+
     <div class="row">
-      <b>${c.items.length}</b><span class="muted">results, ${fetchable} with text</span>
+      <b>${c.items.length}</b><span class="muted">results, ${fetchable} fetchable</span>
       ${fetchable ? '<button class="btn" data-ingest-all>Queue all fetchable</button>' : ''}
       ${scheduleControls()}
     </div>
@@ -882,7 +930,7 @@ async function go(view) {
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-view],[data-open],[data-page],[data-cd],[data-peek],' +
-    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-joblog],' +
+    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-joblog],' +
     '[data-joblog-close],[data-cancel],[data-requeue],[data-jobs-refresh],[data-jobs-clear],' +
     '[data-queue-doc],[data-queue-selected],[data-queue-filter],[data-select-page],' +
     '[data-select-none],[data-translate-doc],[data-translate-range],[data-stylize-doc],' +
@@ -947,6 +995,7 @@ document.addEventListener('click', async (ev) => {
     if (d.catGo !== undefined) return runCatalogSearch();
     if (d.ingest) return queueIngest([state.catalog.items[parseInt(d.ingest, 10)]]);
     if (d.ingestAll !== undefined) return queueIngest(state.catalog.items.filter(r => r.fetchable));
+    if (d.ingestIdent !== undefined) return queueIngestIdentifier();
 
     if (d.joblog) {
       const data = await api(`/api/jobs/${d.joblog}/log`);
@@ -1013,12 +1062,15 @@ document.addEventListener('change', async (ev) => {
     return render();
   }
   if (d.summLevel !== undefined) { state.summ.level = el.value; return runSummarySearch(); }
+  if (d.identSource !== undefined) { state.catalog.identSource = el.value; return; }
   if (d.opt) { state.opts[d.opt] = el.value; return; }
 });
 
 document.addEventListener('input', (ev) => {
   const d = ev.target.dataset;
   if (d.catQuery !== undefined) state.catalog.query = ev.target.value;
+  if (d.ident !== undefined) state.catalog.ident = ev.target.value;
+  if (d.opt === 'pages') state.opts.pages = ev.target.value;
   if (d.searchQ !== undefined) state.search.q = ev.target.value;
   if (d.summQ !== undefined) state.summ.q = ev.target.value;
 });
@@ -1028,6 +1080,7 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Enter') return;
   const d = ev.target.dataset || {};
   if (d.catQuery !== undefined) runCatalogSearch();
+  if (d.ident !== undefined) queueIngestIdentifier();
   if (d.searchQ !== undefined) { state.search.q = ev.target.value; runSearch(); }
   if (d.summQ !== undefined) { state.summ.q = ev.target.value; runSummarySearch(); }
 });
@@ -1082,8 +1135,21 @@ async function queueIngest(records) {
       identifier: r.identifier,
       genre: r.genre || undefined,
       language: r.lang_code || undefined,
+      ...(r.ocr && r.ocr !== 'text' ? ocrParams() : {}),
     }, `Ingest: ${(r.title || r.identifier).slice(0, 60)}`);
   }
+}
+
+function ocrParams() {
+  const o = state.opts;
+  return { ocr: o.ocr && o.ocr !== 'auto' ? o.ocr : undefined, pages: o.pages || undefined };
+}
+
+async function queueIngestIdentifier() {
+  const c = state.catalog, ident = (c.ident || '').trim();
+  if (!ident) return toast('Enter an identifier first.', true);
+  // The source decides which options matter; text sources just ignore them.
+  await queueJob('ingest', { source: c.identSource, identifier: ident, ...ocrParams() });
 }
 
 // ---------------------------------------------------------------------------

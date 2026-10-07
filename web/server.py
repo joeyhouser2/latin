@@ -281,6 +281,37 @@ def api_clear_jobs() -> Dict[str, Any]:
 # Source catalogues (browse before you ingest)
 # ---------------------------------------------------------------------------
 
+# How each connector's text is obtained, for the "needs OCR" flag in the catalogue.
+#   text    -- the source serves finished text; nothing to OCR
+#   library -- a scan whose library publishes its own OCR (still a scan)
+#   scan    -- page images only: Tesseract (print) or HTR (handwriting) must read them
+_OCR_BY_SOURCE = {"mdz": "library", "iiif": "scan", "ocrimages": "scan"}
+
+
+def _with_ocr_hint(source: str, rec: Dict[str, Any]) -> Dict[str, Any]:
+    """Add ``ocr`` (text|library|scan), and for the scan catalogues (vd, europeana)
+    the ``identifier`` / ``fetchable`` fields the Find-texts table expects."""
+    rec = dict(rec)
+    if source in ("vd", "europeana"):
+        from ingest.copies import route
+        links = rec.get("free_links") or rec.get("shown_at", []) + rec.get("shown_by", [])
+        targets = [route(u) for u in links]
+        targets = [t for t in targets if t]
+        rec.setdefault("identifier", f"{rec['db']}:{rec['ppn']}" if source == "vd" else rec.get("id"))
+        rec["fetchable"] = bool(targets)
+        rec.setdefault("url", links[0] if links else None)
+        rec.setdefault("catalogue", rec.get("db", source).upper() if source == "vd" else rec.get("provider"))
+        kinds = {"mdz": "library", "iiif": "scan", "treatises": "text"}
+        rec["ocr"] = kinds.get(targets[0][0], "scan") if targets else None
+        rec.setdefault("note", None if targets else "no readable digital copy")
+    elif source in _OCR_BY_SOURCE:
+        rec.setdefault("fetchable", True)
+        rec["ocr"] = _OCR_BY_SOURCE[source]
+    else:
+        rec.setdefault("ocr", "text" if rec.get("fetchable") else None)
+    return rec
+
+
 class DiscoverRequest(BaseModel):
     source: str
     query: str
@@ -310,6 +341,7 @@ def api_discover(req: DiscoverRequest) -> Dict[str, Any]:
                                  f"ingest a single identifier instead")
     except Exception as exc:                                   # noqa: BLE001
         raise HTTPException(502, f"{type(exc).__name__}: {exc}")
+    items = [_with_ocr_hint(req.source, r) for r in items]
     return {"source": req.source, "query": req.query, "items": items}
 
 
