@@ -34,6 +34,10 @@ from .sutton import SuttonConnector
 from .vernacular import VernacularConnector
 from .mdz import MDZConnector
 from .ocr_images import ImageOCRConnector
+from .vd import VDConnector
+from .iiif import IIIFConnector
+from .europeana import EuropeanaConnector
+from .googlebooks import GoogleBooksConnector
 
 
 _REGISTRY: Dict[str, Callable[[], Connector]] = {
@@ -65,6 +69,10 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     VernacularConnector.name: VernacularConnector,
     MDZConnector.name: MDZConnector,
     ImageOCRConnector.name: ImageOCRConnector,
+    VDConnector.name: VDConnector,
+    IIIFConnector.name: IIIFConnector,
+    EuropeanaConnector.name: EuropeanaConnector,
+    GoogleBooksConnector.name: GoogleBooksConnector,
 }
 
 

@@ -233,3 +233,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# HTR venv (kraken) and downloaded scan/OCR caches
+.venv-htr/
+data/raw/mdz_*/
+data/raw/ocr_*/
+data/raw/iiif_*/

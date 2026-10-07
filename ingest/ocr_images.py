@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from .base import Connector, RawWork
+from .iiif_meta import download_manifest_pages, manifest_label
 from .pagetext import join_pages, latin_function_word_rate
 from .treatises import TreatisesConnector
 
@@ -229,9 +230,10 @@ class ImageOCRConnector(Connector):
             key = hashlib.sha1(base.encode()).hexdigest()[:10]
             work_dir = self.cache_dir / f"ocr_{key}"
             size = opts.get("size", "2000")
-            images, label = self._download_manifest(
-                base, work_dir, size + "," if size.isdigit() else size, opts.get("pages"))
-            title = label or base
+            images, manifest = download_manifest_pages(
+                base, work_dir, size + "," if size.isdigit() else size,
+                lambda n: parse_page_range(opts.get("pages"), n))
+            title = manifest_label(manifest) or base
         else:
             work_dir = Path(base)
             if not work_dir.is_dir():
@@ -266,34 +268,3 @@ class ImageOCRConnector(Connector):
         }
         meta.update(meta_overrides)
         return meta, assemble(pages)
-
-    def _download_manifest(self, url: str, work_dir: Path, size: str,
-                           pages: Optional[str]) -> Tuple[List[str], Optional[str]]:
-        sys.path.insert(0, str(_REPO))
-        from iiif_downloader import IIIFDownloader
-        dl = IIIFDownloader()
-        manifest = dl.get_manifest(url)
-        infos = dl.extract_image_urls(manifest)
-        if not infos:
-            raise ValueError(f"no page images found in manifest {url}")
-        sel = parse_page_range(pages, len(infos))
-        work_dir.mkdir(parents=True, exist_ok=True)
-        paths: List[str] = []
-        for i in sel:
-            info = infos[i]
-            dest = work_dir / f"page_{info['index']:04d}.jpg"
-            if not dest.exists():
-                if not dl.download_image(dl.build_image_url(info, size), dest):
-                    print(f"  could not download page {info['index']}", file=sys.stderr)
-                    continue
-                time.sleep(dl.delay)
-            paths.append(str(dest))
-        label = manifest.get("label")
-        if isinstance(label, dict):                     # IIIF 3: {"en": ["..."]}
-            vals = next(iter(label.values()), [])
-            label = vals[0] if vals else None
-        elif isinstance(label, list):
-            label = label[0] if label else None
-            if isinstance(label, dict):
-                label = label.get("@value")
-        return paths, (str(label) if label else None)
