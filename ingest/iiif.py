@@ -41,8 +41,9 @@ from typing import Dict, List, Optional, Tuple
 from . import abbrev
 from .base import Connector, RawWork
 from .iiif_meta import bibliographic_meta, download_manifest_pages
-from .ocr_images import (assemble, check_latin, ocr_image, ocr_pages,
-                         parse_options, parse_page_range)
+from .ocr_images import (assemble, check_latin, german_function_word_rate,
+                         german_or_latin, ocr_image, ocr_pages, parse_options,
+                         parse_page_range, resolve_print_lang, spread)
 from .pagetext import latin_function_word_rate
 from .treatises import _stage_for
 
@@ -95,7 +96,7 @@ class IIIFConnector(Connector):
         mode = opts.get("mode", "auto")
         if mode not in ("auto", "print", "htr"):
             raise ValueError(f"mode must be auto|print|htr, not {mode!r}")
-        lang = opts.get("lang", "lat")
+        lang = opts.get("lang", "auto")        # auto: choose lat vs Fraktur by trial
         psm = int(opts.get("psm", 3))
         workers = int(opts.get("workers", 4))
         want_size = opts.get("size")
@@ -118,10 +119,13 @@ class IIIFConnector(Connector):
         }
         meta.setdefault("title", url)
 
-        engine, pages, rate = self._transcribe(
+        engine, pages, rate, stats = self._transcribe(
             paths, work_dir, mode, lang, psm, workers)
         meta["_ocr_engine"] = engine
         meta["_ocr_latin_rate"] = rate
+        if engine == "tesseract":
+            meta["language"] = german_or_latin(stats) if "latin_rate" in stats \
+                else meta.get("language", "la")
         if engine == "htr":
             meta["language_stage"] = "medieval"
         else:
@@ -137,26 +141,40 @@ class IIIFConnector(Connector):
 
     # ---- engine choice ----------------------------------------------------
     def _transcribe(self, paths: List[str], work_dir: Path, mode: str, lang: str,
-                    psm: int, workers: int) -> Tuple[str, List[str], float]:
+                    psm: int, workers: int) -> Tuple[str, List[str], float, dict]:
+        """Returns (engine, per-page text, latin rate, print-model stats)."""
         key = lambda p: Path(p).name
-        tess_cache = str(work_dir / f"ocr_{lang}.json")
-        tess_items = [(key(p), (lambda p=p: ocr_image(p, lang=lang, psm=psm)))
-                      for p in paths]
+        stats: dict = {}
 
         if mode == "auto":
-            sample = _spread(paths, 3)
-            sampled = ocr_pages(
-                [(key(p), (lambda p=p: ocr_image(p, lang=lang, psm=psm))) for p in sample],
-                cache_path=tess_cache, workers=workers)
-            rate = latin_function_word_rate("\n".join(sampled.values()))
+            # try the print models on a few pages: Latin *or German* words mean
+            # print (Tesseract); neither means handwriting (HTR)
+            if lang == "auto":
+                lang, stats = resolve_print_lang(paths, work_dir, psm, workers)
+            else:
+                sample = spread(paths, 3)
+                got = ocr_pages(
+                    [(key(p), (lambda p=p: ocr_image(p, lang=lang, psm=psm))) for p in sample],
+                    cache_path=str(work_dir / f"ocr_{lang}.json"), workers=workers,
+                    log=lambda m: None)
+                text = "\n".join(got.values())
+                stats = {"latin_rate": latin_function_word_rate(text),
+                         "german_rate": german_function_word_rate(text)}
+            rate = max(stats["latin_rate"], stats["german_rate"])
             mode = "print" if rate >= _PRINT_THRESHOLD else "htr"
-            print(f"  sample Latin rate {rate:.1%} -> treating as "
+            print(f"  sample word rate {rate:.1%} -> treating as "
                   f"{'print' if mode == 'print' else 'handwriting'}", file=sys.stderr)
+        elif mode == "print" and lang == "auto":
+            lang, stats = resolve_print_lang(paths, work_dir, psm, workers)
 
         if mode == "print":
-            texts = ocr_pages(tess_items, cache_path=tess_cache, workers=workers)
-            pages = [texts[k] for k, _ in tess_items]
-            return "tesseract", pages, latin_function_word_rate("\n".join(pages))
+            if lang == "auto":
+                lang = "lat"
+            items = [(key(p), (lambda p=p: ocr_image(p, lang=lang, psm=psm))) for p in paths]
+            texts = ocr_pages(items, cache_path=str(work_dir / f"ocr_{lang}.json"),
+                              workers=workers)
+            pages = [texts[k] for k, _ in items]
+            return "tesseract", pages, latin_function_word_rate("\n".join(pages)), stats
 
         from . import htr
         if not htr.available():
@@ -166,14 +184,4 @@ class IIIFConnector(Connector):
         # (the raw transcription stays in htr.json beside the page images)
         vocab = abbrev.build_vocab()
         pages = [abbrev.expand_text(texts[key(p)], vocab) for p in paths]
-        return "htr", pages, latin_function_word_rate("\n".join(pages))
-
-
-def _spread(items: List[str], n: int) -> List[str]:
-    """n items spread evenly through the list (skipping the very first/last,
-    which are covers and flyleaves)."""
-    if len(items) <= n:
-        return list(items)
-    lo, hi = min(2, len(items) // 4), len(items) - 1 - min(2, len(items) // 4)
-    step = (hi - lo) / (n - 1) if n > 1 else 0
-    return [items[round(lo + i * step)] for i in range(n)]
+        return "htr", pages, latin_function_word_rate("\n".join(pages)), stats

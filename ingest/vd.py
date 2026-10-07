@@ -176,6 +176,9 @@ class VDConnector(Connector):
             "shelfmark": rec["shelfmark"],
         }
         cat_meta = {k: v for k, v in cat_meta.items() if v}
+        if len(set(rec["languages"])) > 1:
+            # mixed Latin/German: let the OCR stage judge which dominates
+            cat_meta.pop("language", None)
         cat_meta.update(meta_overrides)
         meta, parts = fetch_first_readable(rec["free_links"], options=opts, **cat_meta)
         meta["source"] = (f"{db.upper()} {rec['vd_number'] or ppn} "

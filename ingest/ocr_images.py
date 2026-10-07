@@ -162,6 +162,78 @@ def ocr_pages(items: Sequence[Tuple[str, Callable[[], str]]],
     return {k: cache[k] for k, _ in items}
 
 
+_GERMAN_WORDS = frozenset(
+    "und der die das den dem des ein eine einer eines ist nicht auf fur für sich auch als "
+    "wie bey bei von mit zu zum zur im am dass daß oder aber wird werden hat haben "
+    "sind sein ihr seine nach vor über auch noch nur wenn dann so er sie es wir "
+    "ich ihm ihn dieser diese dieses einem welche welcher denen unter durch gegen".split())
+_TOK = __import__("re").compile(r"[^\W\d_]{2,}", __import__("re").UNICODE)
+
+
+def german_function_word_rate(text: str) -> float:
+    toks = [t.lower().replace("ſ", "s") for t in _TOK.findall(text)]
+    return sum(t in _GERMAN_WORDS for t in toks) / len(toks) if toks else 0.0
+
+
+def spread(items: List[str], n: int) -> List[str]:
+    """n items spread evenly through the list, skipping covers and flyleaves."""
+    if len(items) <= n:
+        return list(items)
+    lo, hi = min(2, len(items) // 4), len(items) - 1 - min(2, len(items) // 4)
+    step = (hi - lo) / (n - 1) if n > 1 else 0
+    return [items[round(lo + i * step)] for i in range(n)]
+
+
+def _word_hit_rate(text: str, vocab) -> float:
+    """Share of alphabetic tokens that are known Latin or German words.
+
+    Used to tell which Tesseract model reads a book's type: the right model
+    produces real words, the wrong one produces letter-soup that misses both.
+    """
+    toks = [t.lower().replace("ſ", "s").translate(_UV) for t in _TOK.findall(text) if len(t) >= 3]
+    if not toks:
+        return 0.0
+    hits = sum(1 for t in toks if vocab.get(t, 0) > 0 or t in _GERMAN_WORDS)
+    return hits / len(toks)
+
+
+_UV = str.maketrans({"v": "u", "j": "i"})
+PRINT_LANGS = ("lat", "Fraktur")
+
+
+def resolve_print_lang(paths: Sequence[str], work_dir: Path, psm: int = 3,
+                       workers: int = 4, log=lambda m: print(m, file=sys.stderr)
+                       ) -> Tuple[str, Dict[str, float]]:
+    """Pick the Tesseract model for a book by trying each on a few sample pages.
+
+    Roman type wants ``lat``; German-region prints of the 16th-18th c. are often
+    in Fraktur/Schwabacher (even their Latin passages), which ``lat`` reads as
+    garbage. Returns ``(lang, stats)``; ``stats`` carries the per-model word-hit
+    rate plus the Latin and German function-word rates of the winning text.
+    OCR of the sample is cached, so choosing costs nothing on the real run.
+    """
+    from . import abbrev
+    vocab = abbrev.build_vocab()
+    sample = spread(list(paths), 3)
+    scores: Dict[str, float] = {}
+    texts: Dict[str, str] = {}
+    for lang in PRINT_LANGS:
+        got = ocr_pages(
+            [(Path(p).name, (lambda p=p, lang=lang: ocr_image(p, lang=lang, psm=psm)))
+             for p in sample],
+            cache_path=str(work_dir / f"ocr_{lang}.json"), workers=workers, log=lambda m: None)
+        texts[lang] = "\n".join(got.values())
+        scores[lang] = _word_hit_rate(texts[lang], vocab)
+    best = max(PRINT_LANGS, key=lambda l: scores[l])
+    stats = {f"hit_{l}": round(scores[l], 3) for l in PRINT_LANGS}
+    stats["latin_rate"] = max(latin_function_word_rate(t) for t in texts.values())
+    stats["german_rate"] = max(german_function_word_rate(t) for t in texts.values())
+    log(f"  print model: {best}  (word-hit rates {stats['hit_lat']:.0%} lat vs "
+        f"{stats['hit_Fraktur']:.0%} Fraktur; Latin words {stats['latin_rate']:.1%}, "
+        f"German words {stats['german_rate']:.1%})")
+    return best, stats
+
+
 def parse_options(identifier: str) -> Tuple[str, Dict[str, str]]:
     """Split ``thing#k=v&k=v`` into (thing, {k: v})."""
     if "#" not in identifier:
@@ -193,6 +265,13 @@ def assemble(pages: List[str], section_words: int = 1200) -> List[Tuple[str, str
     return TreatisesConnector.split_sections(join_pages(pages), section_words)
 
 
+def german_or_latin(stats: Dict[str, float]) -> str:
+    """'de' when a book's sampled text is clearly German rather than Latin."""
+    if stats.get("german_rate", 0) > 1.5 * stats.get("latin_rate", 0) and             stats.get("german_rate", 0) >= 0.05:
+        return "de"
+    return "la"
+
+
 def check_latin(text: str, what: str, strict: bool, language: str = "la") -> Tuple[float, str]:
     """Return (rate, warning). Raises if ``strict`` and text isn't Latin-like."""
     rate = latin_function_word_rate(text)
@@ -222,7 +301,7 @@ class ImageOCRConnector(Connector):
 
     def fetch(self, identifier: str, **meta_overrides) -> RawWork:
         base, opts = parse_options(identifier)
-        lang = opts.get("lang", "lat")
+        lang = opts.get("lang", "auto")
         psm = int(opts.get("psm", 3))
         workers = int(opts.get("workers", 4))
 
@@ -246,13 +325,16 @@ class ImageOCRConnector(Connector):
             images = [str(files[i]) for i in sel]
             title = work_dir.name
 
+        stats: Dict[str, float] = {}
+        if lang == "auto":
+            lang, stats = resolve_print_lang(images, work_dir, psm, workers)
         items = [(Path(p).name, (lambda p=p: ocr_image(p, lang=lang, psm=psm)))
                  for p in images]
         texts = ocr_pages(items, cache_path=str(work_dir / f"ocr_{lang}.json"),
                           workers=workers)
         pages = [texts[k] for k, _ in items]
 
-        language = meta_overrides.get("language", "la")
+        language = meta_overrides.get("language") or german_or_latin(stats)
         rate, warn = check_latin("\n".join(pages), title, self.strict, language)
         if warn:
             print(f"  WARNING {warn}", file=sys.stderr)
@@ -260,7 +342,7 @@ class ImageOCRConnector(Connector):
         meta = {
             "title": title,
             "source": f"Page images OCR'd with Tesseract ({lang}): {base}",
-            "language": "la",
+            "language": german_or_latin(stats),
             "language_stage": "unknown",
             "license": "Depends on the image source -- check before redistributing",
             "has_existing_translation": False,
