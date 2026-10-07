@@ -55,6 +55,14 @@ class HTRUnavailable(RuntimeError):
     pass
 
 
+class HTRQualityError(RuntimeError):
+    """The recogniser's output is not Latin-like enough to ingest."""
+
+
+_HTR_REFUSE_BELOW = 0.50     # vocabulary hit rate of the expanded text
+_HTR_WARN_BELOW = 0.65
+
+
 def resolve_manifest_url(identifier: str) -> str:
     """Expand a ``scheme:value`` shortcut into a manifest URL."""
     sys.path.insert(0, str(_REPO))
@@ -100,6 +108,7 @@ class IIIFConnector(Connector):
         psm = int(opts.get("psm", 3))
         workers = int(opts.get("workers", 4))
         want_size = opts.get("size")
+        strict = self.strict and opts.get("force") not in ("1", "true")
 
         work_dir = self.cache_dir / ("iiif_" + hashlib.sha1(url.encode()).hexdigest()[:10])
         # printed pages need ~2000px; handwriting benefits from more line detail
@@ -120,7 +129,7 @@ class IIIFConnector(Connector):
         meta.setdefault("title", url)
 
         engine, pages, rate, stats = self._transcribe(
-            paths, work_dir, mode, lang, psm, workers)
+            paths, work_dir, mode, lang, psm, workers, strict)
         meta["_ocr_engine"] = engine
         meta["_ocr_latin_rate"] = rate
         meta["source"] += f" [OCR: {engine}]"
@@ -142,7 +151,8 @@ class IIIFConnector(Connector):
 
     # ---- engine choice ----------------------------------------------------
     def _transcribe(self, paths: List[str], work_dir: Path, mode: str, lang: str,
-                    psm: int, workers: int) -> Tuple[str, List[str], float, dict]:
+                    psm: int, workers: int, strict: bool = True
+                    ) -> Tuple[str, List[str], float, dict]:
         """Returns (engine, per-page text, latin rate, print-model stats)."""
         key = lambda p: Path(p).name
         stats: dict = {}
@@ -185,4 +195,16 @@ class IIIFConnector(Connector):
         # (the raw transcription stays in htr.json beside the page images)
         vocab = abbrev.build_vocab()
         pages = [abbrev.expand_text(texts[key(p)], vocab) for p in paths]
+        hit = abbrev.vocab_hit_rate("\n".join(pages), vocab)
+        stats["htr_hit_rate"] = hit
+        if hit < _HTR_REFUSE_BELOW and strict:
+            raise HTRQualityError(
+                f"HTR output is {hit:.0%} known Latin words (needs >= "
+                f"{_HTR_REFUSE_BELOW:.0%}): the CATMuS model does not read this hand "
+                f"(it is trained on Carolingian-and-later minuscule; uncial, "
+                f"rustic capitals and papyrus defeat it). Raw transcription kept in "
+                f"{work_dir / 'htr.json'}. Re-run with #force=1 to ingest anyway.")
+        if hit < _HTR_WARN_BELOW:
+            print(f"  WARNING HTR output is only {hit:.0%} known words -- expect "
+                  f"many misreadings.", file=sys.stderr)
         return "htr", pages, latin_function_word_rate("\n".join(pages)), stats

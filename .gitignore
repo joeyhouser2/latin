@@ -240,3 +240,5 @@ data/raw/mdz_*/
 data/raw/ocr_*/
 data/raw/iiif_*/
 data/cache/
+data/manuscripts/
+data/raw/probe_*/

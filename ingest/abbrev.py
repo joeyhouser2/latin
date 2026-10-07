@@ -268,6 +268,18 @@ def _is_junk_line(line: str, vocab: Counter) -> bool:
     return len(letters) < 4
 
 
+def vocab_hit_rate(text: str, vocab: Counter) -> float:
+    """Share of 3+ letter tokens found in the vocabulary.
+
+    The honest quality signal for HTR: real Latin from a hand the model reads
+    scores ~0.75 (St Gall 390); the same model on a script it was not trained on
+    (uncial on papyrus, St Gall 226) scores ~0.3. Compare with the function-word
+    rate, which stays deceptively high on garbage that happens to contain "et".
+    """
+    toks = [_fold(w) for w in re.findall(r"[A-Za-z]{3,}", text)]
+    return sum(1 for w in toks if vocab.get(w, 0) > 0) / len(toks) if toks else 0.0
+
+
 def expand_text(text: str, vocab: Optional[Counter] = None,
                 split_words: bool = True, drop_junk: bool = True) -> str:
     """Expand a raw HTR transcription into translatable Latin."""
