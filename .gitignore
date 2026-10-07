@@ -242,3 +242,5 @@ data/raw/iiif_*/
 data/cache/
 data/manuscripts/
 data/raw/probe_*/
+data/raw/bench*/
+data/htr_bench*.json

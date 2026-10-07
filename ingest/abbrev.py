@@ -286,6 +286,20 @@ def vocab_hit_rate(text: str, vocab: Counter) -> float:
 _COMMON = 30      # a vocabulary count at/above which a token is a "real word on its own"
 
 
+_FUNCTION_WORDS = frozenset(_PREFIXES) | {"a", "e", "o", "ut", "at", "an", "ac", "id", "is", "ea", "eo",
+                                        "eum", "ei", "me", "te", "se", "ne", "nec", "per", "pro"}
+
+
+def _is_word(part: str, vocab: Counter) -> bool:
+    """A standalone real word? Short fragments never count unless they are real
+    function words: the corpus vocabulary holds OCR junk like "ge" or "si" often
+    enough to look common, which would stop true fragments being rejoined."""
+    f = _fold(part)
+    if len(f) <= 2 and f not in _FUNCTION_WORDS:
+        return False
+    return vocab.get(f, 0) >= _COMMON
+
+
 def merge_fragments(tokens: List[str], vocab: Counter, max_parts: int = 3) -> List[str]:
     """Rejoin words broken by line ends or loose scribal spacing.
 
@@ -315,7 +329,7 @@ def merge_fragments(tokens: List[str], vocab: Counter, max_parts: int = 3) -> Li
             joined = "".join(c for _, c, _ in parts)
             if vocab.get(_fold(joined), 0) < 3:
                 continue
-            if all(vocab.get(_fold(c), 0) >= _COMMON for _, c, _ in parts):
+            if all(_is_word(c, vocab) for _, c, _ in parts):
                 continue
             out.append(parts[0][0] + joined + parts[-1][2])
             i += k
