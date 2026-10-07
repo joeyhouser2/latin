@@ -31,6 +31,8 @@ Newest decisions at the top of each section.
 
 - [x] **Scan connectors** — `mdz`, `ocrimages`, `vd` (VD17/18), `europeana`, `googlebooks`, generic `iiif` (print via Tesseract, manuscripts via Kraken HTR + `ingest/abbrev.py`). Walled sources (HathiTrust, ISTC/CERL, Biblissima, USTC) deliberately not scraped.
 - [ ] **HTR quality** — evaluate CATMuS on more hands/centuries; fine-tune on Latin-only ground truth; abbreviation expansion by a model rather than rules; Fraktur/German-mixed prints need `frk` for Tesseract (VD17 German-heavy items come out garbled); drop-cap and neume noise.
+- [x] **HTR model search** — benchmarked CATMuS Medieval (old + 1.6.0), Manicule, Frolat, CATMuS-Print, Reichenau; pick-by-trial is wired into `iiif`. Whole manuscript done: St Gall 195 (9549 words, 82% known).
+- [ ] **No model reads uncial / rustic capitals / papyrus** (St Gall 226). Needs fine-tuning on hand-corrected pages, or a Greek/Latin late-antique model if one appears. Also untested: Greek minuscule model (`greek_minuscule_s9-12`), German handwriting model, Gallicorpora+ for Old French.
 - [ ] **Run HTR for real** — pick a manuscript, transcribe whole thing, ingest, translate, and read the result critically.
 - [ ] **Gallica full text** — the SRU catalogue is open but every text endpoint is behind an ALTCHA bot check, so `gallica` can only catalogue. Options: match Gallica hits to archive.org copies automatically, or hand-download and ingest with `file`.
 

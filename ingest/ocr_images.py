@@ -184,7 +184,7 @@ def spread(items: List[str], n: int) -> List[str]:
     return [items[round(lo + i * step)] for i in range(n)]
 
 
-def _word_hit_rate(text: str, vocab) -> float:
+def word_hit_rate(text: str, vocab) -> float:
     """Share of alphabetic tokens that are known Latin or German words.
 
     Used to tell which Tesseract model reads a book's type: the right model
@@ -223,7 +223,7 @@ def resolve_print_lang(paths: Sequence[str], work_dir: Path, psm: int = 3,
              for p in sample],
             cache_path=str(work_dir / f"ocr_{lang}.json"), workers=workers, log=lambda m: None)
         texts[lang] = "\n".join(got.values())
-        scores[lang] = _word_hit_rate(texts[lang], vocab)
+        scores[lang] = word_hit_rate(texts[lang], vocab)
     best = max(PRINT_LANGS, key=lambda l: scores[l])
     stats = {f"hit_{l}": round(scores[l], 3) for l in PRINT_LANGS}
     stats["latin_rate"] = max(latin_function_word_rate(t) for t in texts.values())

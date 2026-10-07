@@ -70,7 +70,7 @@ _AFTER = {  # letter carrying the mark -> strings that may follow it
 # ---- step 3: shorthand, applied only when the token carried a mark ----------
 _SHORT = {
     "dns": "dominus", "dni": "domini", "dno": "domino", "dnm": "dominum", "dne": "domine",
-    "ds": "deus", "dm": "deum", "dei": "dei", "ihs": "iesus", "ihc": "iesus",
+    "ds": "deus", "dm": "deum", "do": "deo", "di": "dei", "dei": "dei", "ihs": "iesus", "ihc": "iesus",
     "ihm": "iesum", "ihu": "iesu", "xps": "christus", "xpc": "christus", "xpi": "christi",
     "xpm": "christum", "xpo": "christo", "sps": "spiritus", "spu": "spiritu",
     "spm": "spiritum", "scs": "sanctus", "sci": "sancti", "sco": "sancto",
@@ -84,7 +84,7 @@ _SHORT = {
     "mia": "misericordia", "miae": "misericordiae", "reg": "regem",
 }
 
-_LETTERS = "A-Za-zÀ-ɏꜰ-ꟿ"
+_LETTERS = "A-Za-zÀ-ɏ̀-ͯ᷀-᷿ꜰ-ꟿ"   # incl. combining marks
 _TOKEN = re.compile(rf"^([^{_LETTERS}&⁊\d]*)(.*?)([^{_LETTERS}&⁊\d]*)$", re.DOTALL)
 
 
@@ -162,7 +162,10 @@ def _mark_candidates(base: str) -> List[str]:
 
 
 def _best(cands: List[str], vocab: Counter) -> Optional[str]:
-    scored = [(vocab.get(_fold(c), 0), -i, c) for i, c in enumerate(cands)]
+    # A word-final tilde is overwhelmingly -m (-um, -am, -em); the corpus also
+    # holds OCR junk like "etian", so weight m-endings rather than trust raw counts.
+    scored = [(vocab.get(_fold(c), 0) * (20 if c.endswith("m") else 1), -i, c)
+              for i, c in enumerate(cands)]
     scored = [s for s in scored if s[0] > 0]
     return max(scored)[2] if scored else None
 
@@ -280,28 +283,81 @@ def vocab_hit_rate(text: str, vocab: Counter) -> float:
     return sum(1 for w in toks if vocab.get(w, 0) > 0) / len(toks) if toks else 0.0
 
 
+_COMMON = 30      # a vocabulary count at/above which a token is a "real word on its own"
+
+
+def merge_fragments(tokens: List[str], vocab: Counter, max_parts: int = 3) -> List[str]:
+    """Rejoin words broken by line ends or loose scribal spacing.
+
+    Carolingian hands break words at line ends with no hyphen, and space the
+    syllables unevenly ("ex ercendus", "mili tes", "ter reni"). Merge adjacent
+    tokens when the concatenation is a known word and at least one part is not a
+    common word by itself -- so "ex"+"ercendus" joins but "et"+"iam", two real
+    words, is left alone.
+    """
+    out: List[str] = []
+    i, n = 0, len(tokens)
+    while i < n:
+        merged = False
+        for k in range(min(max_parts, n - i), 1, -1):
+            group = tokens[i:i + k]
+            parts = []
+            ok = True
+            for j, tok in enumerate(group):
+                m = _TOKEN.match(tok)
+                pre, core, post = m.groups() if m else ("", tok, "")
+                if not core or not core.isalpha() or (j > 0 and pre) or (j < k - 1 and post):
+                    ok = False
+                    break
+                parts.append((pre, core, post))
+            if not ok:
+                continue
+            joined = "".join(c for _, c, _ in parts)
+            if vocab.get(_fold(joined), 0) < 3:
+                continue
+            if all(vocab.get(_fold(c), 0) >= _COMMON for _, c, _ in parts):
+                continue
+            out.append(parts[0][0] + joined + parts[-1][2])
+            i += k
+            merged = True
+            break
+        if not merged:
+            out.append(tokens[i])
+            i += 1
+    return out
+
+
 def expand_text(text: str, vocab: Optional[Counter] = None,
-                split_words: bool = True, drop_junk: bool = True) -> str:
-    """Expand a raw HTR transcription into translatable Latin."""
+                split_words: bool = True, drop_junk: bool = True,
+                merge_words: bool = True) -> str:
+    """Expand a raw HTR transcription into translatable Latin.
+
+    Returns one flowing line per paragraph block (the transcription's line
+    breaks carry no meaning once words are rejoined across them).
+    """
     vocab = vocab if vocab is not None else build_vocab()
-    out_lines: List[str] = []
+    blocks: List[List[str]] = [[]]
     for line in text.replace("\r\n", "\n").split("\n"):
         if not line.strip():
-            out_lines.append("")
+            if blocks[-1]:
+                blocks.append([])
             continue
         if drop_junk and _is_junk_line(line, vocab):
             continue
-        toks = []
-        for tok in line.split():
-            e = expand_token(tok, vocab)
-            if split_words and vocab:
+        blocks[-1].extend(expand_token(tok, vocab) for tok in line.split())
+
+    out_blocks: List[str] = []
+    for toks in blocks:
+        toks = [t for t in toks if t]
+        if merge_words and vocab:
+            toks = merge_fragments(toks, vocab)
+        if split_words and vocab:
+            fixed = []
+            for e in toks:
                 m = _TOKEN.match(e)
-                if m and m.group(2):
-                    parts = split_run_together(m.group(2), vocab)
-                    if parts:
-                        e = m.group(1) + " ".join(parts) + m.group(3)
-            if e:
-                toks.append(e)
+                parts = split_run_together(m.group(2), vocab) if m and m.group(2) else None
+                fixed.append(m.group(1) + " ".join(parts) + m.group(3) if parts else e)
+            toks = fixed
         if toks:
-            out_lines.append(" ".join(toks))
-    return unicodedata.normalize("NFC", "\n".join(out_lines))
+            out_blocks.append(" ".join(toks))
+    return unicodedata.normalize("NFC", "\n\n".join(out_blocks))

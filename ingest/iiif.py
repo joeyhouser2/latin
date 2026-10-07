@@ -42,7 +42,7 @@ from . import abbrev
 from .base import Connector, RawWork
 from .iiif_meta import bibliographic_meta, download_manifest_pages
 from .ocr_images import (assemble, check_latin, german_function_word_rate,
-                         german_or_latin, ocr_image, ocr_pages, parse_options,
+                         german_or_latin, ocr_image, ocr_pages, parse_options, word_hit_rate,
                          parse_page_range, resolve_print_lang, spread)
 from .pagetext import latin_function_word_rate
 from .treatises import _stage_for
@@ -178,32 +178,66 @@ class IIIFConnector(Connector):
         elif mode == "print" and lang == "auto":
             lang, stats = resolve_print_lang(paths, work_dir, psm, workers)
 
+        from . import htr
+        vocab = abbrev.build_vocab()
+
         if mode == "print":
             if lang == "auto":
                 lang = "lat"
-            items = [(key(p), (lambda p=p: ocr_image(p, lang=lang, psm=psm))) for p in paths]
-            texts = ocr_pages(items, cache_path=str(work_dir / f"ocr_{lang}.json"),
-                              workers=workers)
-            pages = [texts[k] for k, _ in items]
+            tess_items = [(key(p), (lambda p=p: ocr_image(p, lang=lang, psm=psm))) for p in paths]
+            tess_cache = str(work_dir / f"ocr_{lang}.json")
+            kraken = htr.installed(htr.PRINT_MODELS) if htr.available() else []
+            if kraken:
+                # Trained print models usually out-read Tesseract on early type
+                # (0.88 vs 0.68 known words on a 1744 Latin print): try both on a
+                # few pages and keep the better.
+                sample = spread(paths, 3)
+                got = ocr_pages([(key(p), (lambda p=p: ocr_image(p, lang=lang, psm=psm)))
+                                 for p in sample], cache_path=tess_cache,
+                                workers=workers, log=lambda m: None)
+                score = lambda t: word_hit_rate(t, vocab)
+                tess_score = score("\n".join(got.values()))
+                best, scores = htr.pick_model(sample, kraken, score, work_dir)
+                stats["print_scores"] = {"tesseract": tess_score, **scores}
+                if scores.get(best.name, 0.0) > tess_score:
+                    print(f"  print engine: {best.stem} ({scores[best.name]:.0%}) beats "
+                          f"Tesseract {lang} ({tess_score:.0%})", file=sys.stderr)
+                    texts = htr.transcribe_images(
+                        paths, cache_path=str(work_dir / f"htr_{best.stem}.json"),
+                        model=str(best))
+                    pages = [texts[key(p)] for p in paths]
+                    stats["model"] = best.name
+                    return ("kraken-print", pages,
+                            latin_function_word_rate("\n".join(pages)), stats)
+            texts = ocr_pages(tess_items, cache_path=tess_cache, workers=workers)
+            pages = [texts[k] for k, _ in tess_items]
             return "tesseract", pages, latin_function_word_rate("\n".join(pages)), stats
 
-        from . import htr
         if not htr.available():
             raise HTRUnavailable(htr.SETUP_HINT)
-        texts = htr.transcribe_images(paths, cache_path=str(work_dir / "htr.json"))
+        models = htr.installed(htr.HAND_MODELS) or [htr.MODEL]
+        # which hand model reads this book best? try each on a few pages
+        best, scores = htr.pick_model(
+            spread(paths, 3), models,
+            lambda t: abbrev.vocab_hit_rate(abbrev.expand_text(t, vocab), vocab), work_dir)
+        stats["model"] = best.name
+        stats["model_scores"] = scores
+        cache = work_dir / f"htr_{best.stem}.json"
+        texts = htr.transcribe_images(paths, cache_path=str(cache), model=str(best))
         # HTR is graphematic; expand abbreviations so the text can be translated
-        # (the raw transcription stays in htr.json beside the page images)
-        vocab = abbrev.build_vocab()
+        # (the raw transcription stays in the cache file beside the page images)
         pages = [abbrev.expand_text(texts[key(p)], vocab) for p in paths]
         hit = abbrev.vocab_hit_rate("\n".join(pages), vocab)
         stats["htr_hit_rate"] = hit
         if hit < _HTR_REFUSE_BELOW and strict:
             raise HTRQualityError(
                 f"HTR output is {hit:.0%} known Latin words (needs >= "
-                f"{_HTR_REFUSE_BELOW:.0%}): the CATMuS model does not read this hand "
-                f"(it is trained on Carolingian-and-later minuscule; uncial, "
-                f"rustic capitals and papyrus defeat it). Raw transcription kept in "
-                f"{work_dir / 'htr.json'}. Re-run with #force=1 to ingest anyway.")
+                f"{_HTR_REFUSE_BELOW:.0%}): none of the installed models "
+                f"({', '.join(m.stem for m in models)}) reads this hand. They are "
+                f"trained on Carolingian-and-later minuscule; uncial, rustic "
+                f"capitals and papyrus defeat them (see scripts/htr_benchmark.py). "
+                f"Raw transcription kept in {cache}. Re-run with #force=1 to "
+                f"ingest anyway.")
         if hit < _HTR_WARN_BELOW:
             print(f"  WARNING HTR output is only {hit:.0%} known words -- expect "
                   f"many misreadings.", file=sys.stderr)

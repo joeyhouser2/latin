@@ -367,6 +367,14 @@ It searches two catalogues, which do different jobs:
   the model invents over neumes and stains. The raw transcription stays in
   `data/raw/iiif_*/htr.json`. Still heuristic — it makes text translatable, not
   edited. Setup is in the `ingest/htr.py` docstring.
+* **Which model reads what** (`scripts/htr_benchmark.py`, known-word rate on three
+  sample pages each): Latin print 1744 — CATMuS-Print 0.88, Reichenau 0.87, Tesseract
+  0.68; Carolingian minuscule — CATMuS Medieval 1.6.0 ≈ Manicule 0.79; 14th-c.
+  Gothic — Manicule 0.65 vs CATMuS 0.56; the Frolat models trail (0.4–0.5);
+  **uncial on papyrus — every model ~0.30 (unreadable)**. The `iiif` connector tries
+  each installed candidate (`ingest/htr.py: HAND_MODELS / PRINT_MODELS`) on three
+  pages and keeps the best, and refuses handwriting output under 50% known words.
+  Models live in `models/htr/` (Zenodo, CC-BY/CC0; record ids in `htr.py`).
 * **OCR in the web app.** Find-texts rows are flagged **text**, **scan · library OCR**
   or **scan · OCR needed**; the OCR row above the table picks the engine (auto /
   library / Tesseract / handwriting) and a page range for every ingest you queue,

@@ -29,7 +29,21 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 _REPO = Path(__file__).resolve().parent.parent
-MODEL = _REPO / "models" / "htr" / "catmus-medieval.mlmodel"
+MODEL_DIR = _REPO / "models" / "htr"
+# Newest CATMuS Medieval first; the original stays as a fallback for old installs.
+MODEL = next((p for p in (MODEL_DIR / "catmus-medieval-1.6.0.mlmodel",
+                          MODEL_DIR / "catmus-medieval.mlmodel") if p.exists()),
+             MODEL_DIR / "catmus-medieval-1.6.0.mlmodel")
+
+# Candidate models by kind. Which one reads a given book best depends on the
+# hand, so the connector tries each on a few sample pages and keeps the winner
+# (scripts/htr_benchmark.py measured these: CATMuS 1.6.0 ~ Manicule on
+# Carolingian, Manicule ahead on 13th-15th c. Gothic; CATMuS-Print/Reichenau beat
+# Tesseract on Latin print, 0.88 vs 0.68 known words).
+# Nothing here reads uncial/rustic capitals on papyrus (all score ~0.3).
+HAND_MODELS = ["catmus-medieval-1.6.0.mlmodel", "manicule-2026-latin_medieval.mlmodel"]
+PRINT_MODELS = ["catmus-print-fondue-large.mlmodel", "reichenau_lat_cat_099218.mlmodel",
+                "CATMuS-Gothic-Print-1.0.0.mlmodel"]
 WORKER = _REPO / "scripts" / "htr_worker.py"
 
 SETUP_HINT = (
@@ -65,6 +79,33 @@ def pick_gpu(min_free_mb: int = 2500) -> Optional[int]:
     return max(free, key=lambda t: t[1])[0] if free else None
 
 
+def installed(names: List[str]) -> List[Path]:
+    """The candidate models that are actually on disk."""
+    return [MODEL_DIR / n for n in names if (MODEL_DIR / n).exists()]
+
+
+def pick_model(sample_paths: List[str], candidates: List[Path], score: Callable[[str], float],
+               cache_dir: Path, log: Callable[[str], None] = lambda m: print(m, file=sys.stderr)
+               ) -> "tuple[Path, Dict[str, float]]":
+    """Transcribe a few pages with every candidate; return the best by ``score``.
+
+    ``score`` maps transcribed text to a quality number (known-word rate).
+    Sample transcriptions are cached per model, so the winner's pages are not
+    redone when the whole book runs.
+    """
+    if len(candidates) == 1:
+        return candidates[0], {}
+    scores: Dict[str, float] = {}
+    for model in candidates:
+        got = transcribe_images(sample_paths, cache_path=str(cache_dir / f"htr_{model.stem}.json"),
+                                model=str(model), log=lambda m: None)
+        scores[model.name] = score("\n".join(got.values()))
+    best = max(candidates, key=lambda m: scores[m.name])
+    log("  model trial: " + ", ".join(f"{k.split('.')[0]} {v:.0%}" for k, v in scores.items())
+        + f"  -> {best.stem}")
+    return best, scores
+
+
 def available() -> bool:
     return _venv_python() is not None and MODEL.exists()
 
@@ -83,7 +124,7 @@ def transcribe_images(paths: List[str], cache_path: Optional[str] = None,
         log(f"  HTR cache: {len(paths) - len(todo)}/{len(paths)} pages already done")
     if todo:
         py = _venv_python()
-        if py is None or not (model or MODEL).exists():
+        if py is None or not Path(model or MODEL).exists():
             raise RuntimeError(SETUP_HINT)
         env = dict(os.environ)
         if device == "auto" and env.get("LATIN_GPU_PINNED"):
