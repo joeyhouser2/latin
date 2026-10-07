@@ -32,6 +32,8 @@ from .capitularia import CapitulariaConnector
 from .celt import CELTConnector
 from .sutton import SuttonConnector
 from .vernacular import VernacularConnector
+from .mdz import MDZConnector
+from .ocr_images import ImageOCRConnector
 
 
 _REGISTRY: Dict[str, Callable[[], Connector]] = {
@@ -61,6 +63,8 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     CELTConnector.name: CELTConnector,
     SuttonConnector.name: SuttonConnector,
     VernacularConnector.name: VernacularConnector,
+    MDZConnector.name: MDZConnector,
+    ImageOCRConnector.name: ImageOCRConnector,
 }
 
 

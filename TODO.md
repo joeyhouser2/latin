@@ -29,6 +29,7 @@ Newest decisions at the top of each section.
 - [x] **Bulk-translate action** — done in the web app: select works and queue them, or queue one job covering a whole filter. Jobs run one at a time via `web/jobs.py`.
 - [ ] **Manuscript image viewer** — show the IIIF page image alongside the text (pairs with Phase 5 below).
 
+- [x] **MDZ + image OCR** — `mdz` (library hOCR, Tesseract fallback) and `ocrimages` (folder / IIIF manifest -> Tesseract) are built; no MDZ `discover()` (search page is client-rendered). Still to do: HathiTrust/Google Books page text, Biblissima/VD16-18/USTC/ISTC catalogue connectors, and HTR for manuscripts (Kraken/eScriptorium).
 - [ ] **Gallica full text** — the SRU catalogue is open but every text endpoint is behind an ALTCHA bot check, so `gallica` can only catalogue. Options: match Gallica hits to archive.org copies automatically, or hand-download and ingest with `file`.
 
 ## Search / discovery

@@ -246,6 +246,8 @@ python scripts/ingest.py list          # show available sources
 | **EDCS** (~542k Latin inscriptions) | `edcs` | search query (one Document per query) | — |
 | **Treatises** (financial/fiscal/commercial Latin & Greek) | `treatises` | `ia:<archive.org id>` | works matching a theme (`usury`, `money`, `exchange`, `commerce`, `tax`, `weights`, `accounting`, `economy`) or free text |
 | **Gallica** (BnF) — *catalogue only* | `gallica` | — (see below) | Latin works matching an SRU query |
+| **MDZ** (Bayerische Staatsbibliothek, scanned early-modern prints) | `mdz` | `bsb12188295`, or `bsb…#ocr=tesseract&pages=1-40` | — (see below) |
+| **Page images → Tesseract OCR** (folder from `iiif_downloader.py`, or any IIIF manifest URL) | `ocrimages` | directory, or manifest URL `#pages=1-40` | — |
 | **Capitularia** (Frankish royal capitularies, 507–9th c.) ✓ *verified translation status* | `capitularia` | `BK.139` / `Mordek.12` | `untranslated`, a reign (`pre814`, `ldf` = 814–840, `post840`), `all`, or title words |
 | **CELT** (Hiberno-Latin, Cork) ✓ *verified translation status* | `celt` | `L100003` | `untranslated`, `all`, or title/author words |
 | **Vernacular classics** (de/fr/it/nl/pl/hu/ru, medieval–Renaissance) | `vernacular` | catalogue key `pl:rej-zywot`, or `ws:<lang>:<Wikisource page>` | a language code or `all` |
@@ -329,6 +331,18 @@ It searches two catalogues, which do different jobs:
   prevents is ingesting 50KB of French navigation chrome as a Latin treatise and
   queueing it for translation. Use it to find works, then look for the same
   edition on archive.org or download it by hand and ingest with `file`.
+* **MDZ (Munich)** — scanned early-modern prints, and unlike Gallica it is open to
+  scripts. `mdz` reads the library's own per-page hOCR by default (`ocr=auto`),
+  and falls back to local Tesseract (`lat` model) only for pages with no usable
+  text; `#ocr=tesseract` forces local OCR, `#pages=a-b` limits the range. Try both
+  engines on a few pages before committing to a whole book. There is no
+  `--discover`: find items on digitale-sammlungen.de (filter *Latin*) and pass
+  their `bsb` ids. Both connectors share `ingest/pagetext.py`, which rejoins
+  hyphenated line ends, drops folio/signature lines and catchwords, rejoins
+  sentences cut by a page break, and folds long s (ſ) to s. Tesseract is for
+  **print only** — on handwriting it produces fluent-looking noise, so both
+  connectors refuse text with almost no Latin function words. Manuscripts need
+  HTR (see the Manuscripts section).
 
 Long OCR blobs are split into numbered ~1200-word sections. That is not tidiness:
 every scoped pass in this project (`--section-range`) works in sections, so a
