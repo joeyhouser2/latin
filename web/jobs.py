@@ -65,6 +65,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from core.models import LANGUAGES
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = Path(os.environ.get("LATIN_JOBS_DB") or REPO_ROOT / "data" / "jobs.db")
@@ -786,7 +788,7 @@ def _describe(kind: str, params: Dict[str, Any]) -> str:
         elif params.get("source_prefix"):
             scope = f"source '{params['source_prefix']}'"
         elif params.get("language"):
-            scope = {"la": "all Latin", "grc": "all Greek"}.get(params["language"], params["language"])
+            scope = "all " + LANGUAGES.get(params["language"], params["language"])
         else:
             scope = "the whole library"
         return f"{verb}: {scope}"

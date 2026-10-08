@@ -152,7 +152,7 @@ function viewLibrary() {
         <div class="sub">${esc(d.author || 'Anon.')}${d.century ? ' · ' + centuryLabel(d.century) : ''}
              · ${esc((d.source || '').slice(0, 42))}</div>
       </td>
-      <td><span class="badge ${esc(d.language)}">${d.language === 'grc' ? 'Greek' : 'Latin'}</span>
+      <td><span class="badge ${esc(d.language)}">${esc(((state.facets || {}).language_names || {})[d.language] || 'Latin')}</span>
           ${d.ocr ? `<span class="badge queued" title="Text made from page images (${esc(d.ocr)}): expect misreadings">OCR${['htr','tesseract','library'].includes(d.ocr) ? ' · ' + esc(d.ocr) : ''}</span>` : ''}</td>
       <td class="muted">${esc((d.language_stage || '').replace('_', ' '))}</td>
       <td class="num">${num(d.segments)}</td>
@@ -171,7 +171,7 @@ function viewLibrary() {
       <input type="search" data-filter="q" value="${esc(f.q)}" placeholder="title, author or source…">
       <select data-filter="language">
         <option value="">any language</option>
-        ${opt((facets.languages || []), f.language, x => (x.value === 'grc' ? 'Greek' : 'Latin') + ` (${x.n})`)}
+        ${opt((facets.languages || []), f.language, x => (((facets.language_names || {})[x.value]) || x.value) + ` (${x.n})`)}
       </select>
       <select data-filter="stage">
         <option value="">any era</option>
@@ -543,7 +543,7 @@ function viewCatalog() {
        the ones you want. <b>capitularia</b> (Frankish royal legislation, 507–9th c.) and
        <b>celt</b> (Hiberno-Latin) check whether each work already has an English translation
        and show the evidence; pick <i>untranslated</i> to see only the ones that don't.
-       <b>treatises</b> searches archive.org and Gallica (catalogue only). <b>sutton</b> searches Dana Sutton's bibliography of ~54,000 online Neo-Latin texts (only the archive.org entries have text; add <i>fetchable</i> to the query to see just those). <b>pg_corpus</b> lists Migne's Patrologia Graeca volumes, e.g. Chrysostom's homilies.</p>
+       <b>treatises</b> searches archive.org and Gallica (catalogue only). <b>sutton</b> searches Dana Sutton's bibliography of ~54,000 online Neo-Latin texts (only the archive.org entries have text; add <i>fetchable</i> to the query to see just those). <b>vernacular</b> is a curated list of famous medieval/Renaissance German, French, Italian, Dutch, Polish, Hungarian and Russian works (enter a language code like <i>pl</i>, or <i>all</i>). <b>pg_corpus</b> lists Migne's Patrologia Graeca volumes, e.g. Chrysostom's homilies.</p>
 
     <div class="row">
       <select data-cat-source>

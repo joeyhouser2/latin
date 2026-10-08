@@ -112,6 +112,7 @@ td.title .sub { color: var(--muted); font-size: 0.76rem; }
          font-size: 0.7rem; border: 1px solid var(--line); color: var(--muted); }
 .badge.la { color: var(--accent); }
 .badge.grc { color: var(--ok); }
+.badge.de, .badge.fr, .badge.it, .badge.nl, .badge.pl, .badge.hu, .badge.ru { color: var(--warn); }
 .badge.queued { color: var(--muted); }
 .badge.running { color: var(--warn); border-color: var(--warn); }
 .badge.done { color: var(--ok); border-color: var(--ok); }
