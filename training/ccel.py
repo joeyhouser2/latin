@@ -86,9 +86,31 @@ class CCELExtractor:
 
     @staticmethod
     def _strip(root: ET.Element, drop: set) -> None:
-        parents = {c: p for p in root.iter() for c in p}
-        for el in list(parents):
-            if _local(el.tag) in drop and el in parents:
-                parent = parents[el]
-                if el in list(parent):
-                    parent.remove(el)
+        """Remove apparatus elements, keeping the prose that follows them.
+
+        ElementTree's ``remove`` also discards the element's ``tail`` -- and in
+        ThML a footnote marker sits *inside* the paragraph it annotates, so the
+        rest of the sentence lives in ``<note>.tail``. Dropping notes naively
+        therefore deleted every sentence remainder after a footnote: on ANF vol
+        3's Apology that was 52% of the English (98,914 chars kept out of
+        206,474). We splice each tail onto the preceding sibling (or the
+        parent's text) before removing the node.
+        """
+        def clean(parent: ET.Element) -> None:
+            for child in list(parent):
+                clean(child)               # depth-first, so nested drops resolve
+            for el in list(parent):
+                if _local(el.tag) not in drop:
+                    continue
+                tail = el.tail or ""
+                if tail:
+                    siblings = list(parent)
+                    idx = siblings.index(el)
+                    if idx == 0:
+                        parent.text = (parent.text or "") + tail
+                    else:
+                        prev = siblings[idx - 1]
+                        prev.tail = (prev.tail or "") + tail
+                parent.remove(el)
+
+        clean(root)
