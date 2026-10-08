@@ -127,7 +127,19 @@ class IIIFConnector(Connector):
             "has_existing_translation": False,
         }
         meta.setdefault("title", url)
+        return self.process_pages(paths, work_dir, meta, opts, meta_overrides, strict)
 
+    def process_pages(self, paths: List[str], work_dir: Path, meta: dict, opts: dict,
+                      meta_overrides: dict, strict: bool = True) -> RawWork:
+        """Page images (downloaded or local) -> text, choosing and running an engine.
+
+        Shared with ``ocrimages`` so a hand-downloaded folder or PDF gets the
+        same engine selection (Fraktur, Kraken print, handwriting) as a manifest.
+        """
+        mode = opts.get("mode", "auto")
+        lang = opts.get("lang", "auto")
+        psm = int(opts.get("psm", 3))
+        workers = int(opts.get("workers", 4))
         engine, pages, rate, stats = self._transcribe(
             paths, work_dir, mode, lang, psm, workers, strict)
         meta["_ocr_engine"] = engine

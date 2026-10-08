@@ -290,8 +290,38 @@ def check_latin(text: str, what: str, strict: bool, language: str = "la") -> Tup
     return rate, ""
 
 
+def render_pdf_pages(pdf: Path, out_dir: Path, dpi: int = 250,
+                     pages: Optional[str] = None) -> List[str]:
+    """Rasterise a PDF to ``page_NNNN.jpg`` files (skipping ones already there).
+
+    Hand-downloaded scans are usually PDFs. ``pages`` is the usual 1-based
+    ``a-b`` range. Uses PyMuPDF, which is already a dependency of the Greek
+    re-OCR script.
+    """
+    import fitz  # PyMuPDF
+    out_dir.mkdir(parents=True, exist_ok=True)
+    doc = fitz.open(str(pdf))
+    paths: List[str] = []
+    for i in parse_page_range(pages, len(doc)):
+        dest = out_dir / f"page_{i + 1:04d}.jpg"
+        if not dest.exists():
+            doc[i].get_pixmap(dpi=dpi).save(str(dest))
+        paths.append(str(dest))
+    return paths
+
+
 class ImageOCRConnector(Connector):
-    """Ingest a folder of page images, or a IIIF manifest, via Tesseract."""
+    """Ingest scans you downloaded by hand: a PDF, a folder of images, or a manifest.
+
+    For sources we cannot fetch automatically (see ``ingest.ocr_notes``): save the
+    PDF or images, then point this connector at the file. It uses the same engine
+    selection as ``iiif`` -- Tesseract Latin or Fraktur, a Kraken print model, or
+    handwriting recognition, whichever reads the pages best.
+
+    Identifiers:  ``path/to/book.pdf``, ``path/to/folder``, or a manifest URL.
+    Options (after ``#``): ``pages=1-40``, ``mode=print|htr``, ``lang=lat|Fraktur``,
+    ``dpi=250`` (PDF rendering), ``force=1`` to ingest despite a quality refusal.
+    """
 
     name = "ocrimages"
 
@@ -300,53 +330,38 @@ class ImageOCRConnector(Connector):
         self.strict = strict
 
     def fetch(self, identifier: str, **meta_overrides) -> RawWork:
+        from .iiif import IIIFConnector
         base, opts = parse_options(identifier)
-        lang = opts.get("lang", "auto")
-        psm = int(opts.get("psm", 3))
-        workers = int(opts.get("workers", 4))
-
+        iiif = IIIFConnector(cache_dir=str(self.cache_dir), strict=self.strict)
         if base.lower().startswith(("http://", "https://")):
-            key = hashlib.sha1(base.encode()).hexdigest()[:10]
-            work_dir = self.cache_dir / f"ocr_{key}"
-            size = opts.get("size", "2000")
-            images, manifest = download_manifest_pages(
-                base, work_dir, size + "," if size.isdigit() else size,
-                lambda n: parse_page_range(opts.get("pages"), n))
-            title = manifest_label(manifest) or base
-        else:
-            work_dir = Path(base)
-            if not work_dir.is_dir():
-                raise FileNotFoundError(f"not a directory or manifest URL: {base}")
-            files = sorted(p for p in work_dir.iterdir()
-                           if p.suffix.lower() in _IMAGE_EXT)
+            return iiif.fetch(identifier, **meta_overrides)
+
+        path = Path(base)
+        strict = self.strict and opts.get("force") not in ("1", "true")
+        if path.is_file() and path.suffix.lower() == ".pdf":
+            key = hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:10]
+            work_dir = self.cache_dir / f"pdf_{key}"
+            images = render_pdf_pages(path, work_dir, int(opts.get("dpi", 250)),
+                                      opts.get("pages"))
+            title = path.stem
+        elif path.is_dir():
+            work_dir = path
+            files = sorted(p for p in path.iterdir() if p.suffix.lower() in _IMAGE_EXT)
             if not files:
-                raise FileNotFoundError(f"no page images in {work_dir}")
-            sel = parse_page_range(opts.get("pages"), len(files))
-            images = [str(files[i]) for i in sel]
-            title = work_dir.name
-
-        stats: Dict[str, float] = {}
-        if lang == "auto":
-            lang, stats = resolve_print_lang(images, work_dir, psm, workers)
-        items = [(Path(p).name, (lambda p=p: ocr_image(p, lang=lang, psm=psm)))
-                 for p in images]
-        texts = ocr_pages(items, cache_path=str(work_dir / f"ocr_{lang}.json"),
-                          workers=workers)
-        pages = [texts[k] for k, _ in items]
-
-        language = meta_overrides.get("language") or german_or_latin(stats)
-        rate, warn = check_latin("\n".join(pages), title, self.strict, language)
-        if warn:
-            print(f"  WARNING {warn}", file=sys.stderr)
+                raise FileNotFoundError(f"no page images in {path}")
+            images = [str(files[i]) for i in parse_page_range(opts.get("pages"), len(files))]
+            title = path.name
+        else:
+            raise FileNotFoundError(f"not a PDF, folder or manifest URL: {base}")
+        if not images:
+            raise ValueError(f"no pages selected from {base}")
 
         meta = {
             "title": title,
-            "source": f"Page images OCR'd with Tesseract ({lang}): {base} [OCR: tesseract]",
-            "language": german_or_latin(stats),
+            "source": f"Local scan: {path.name}",
+            "language": "la",
             "language_stage": "unknown",
             "license": "Depends on the image source -- check before redistributing",
             "has_existing_translation": False,
-            "_ocr_latin_rate": rate,
         }
-        meta.update(meta_overrides)
-        return meta, assemble(pages)
+        return iiif.process_pages(images, work_dir, meta, opts, meta_overrides, strict)
