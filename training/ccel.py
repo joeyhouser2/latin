@@ -27,6 +27,22 @@ def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
+_ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+
+
+def _roman(text: str) -> int:
+    """Roman numeral -> int, or 0 if it isn't one (CCEL numbers books 'I'..'XXII')."""
+    s = (text or "").strip().upper()
+    if not s or any(c not in _ROMAN_VALUES for c in s):
+        return 0
+    total = 0
+    for i, c in enumerate(s):
+        v = _ROMAN_VALUES[c]
+        nxt = _ROMAN_VALUES.get(s[i + 1]) if i + 1 < len(s) else None
+        total += -v if nxt and nxt > v else v
+    return total
+
+
 @dataclass
 class EnglishWork:
     volume: str
@@ -48,6 +64,46 @@ class CCELExtractor:
         root = ET.fromstring(resp.content)
         self._strip(root, _DROP)
         return root
+
+    def books(self, volume: str, work_title: str,
+              root: ET.Element = None) -> List[Tuple[int, str]]:
+        """[(book_number, prose)] for one multi-book work, e.g. the Confessions.
+
+        The work's container and the book level both move between volumes, so
+        this matches on @title at any depth and then takes whatever descendant
+        divisions are marked ``type="Book"``:
+
+            npnf101  div1 "The Confessions"      -> div2 type=Book, n=I..XIII
+            npnf102  div1 "City of God"          -> div2 type=Book, n=I..XXII
+            npnf103  div2 "On the Holy Trinity." -> div3 type=Book, n=I..XV
+
+        `works()` is no help here: it treats div2 as the work, so for npnf101 it
+        reports 13 "works" whose titles are really book summaries. Pass ``root``
+        to reuse an already-fetched volume (they are several MB each).
+
+        The book numbers are what make per-book alignment possible: the Latin
+        side (e.g. The Latin Library's augustine/conf<N>.shtml) is one page per
+        book, and aligning book against book beats aligning whole works.
+        """
+        if root is None:
+            root = self.fetch_volume(volume)
+        want = work_title.lower()
+        container = next(
+            (e for e in root.iter()
+             if _local(e.tag).startswith("div") and want in (e.get("title") or "").lower()),
+            None,
+        )
+        if container is None:
+            return []
+        out: List[Tuple[int, str]] = []
+        for div in (e for e in container.iter() if _local(e.tag).startswith("div")):
+            if (div.get("type") or "").lower() != "book":
+                continue
+            n = _roman(div.get("n") or "")
+            text = self._prose(div)
+            if n and text:
+                out.append((n, text))
+        return sorted(out)
 
     def works(self, volume: str) -> List[EnglishWork]:
         """Return the volume's works (div2) with their chapters (div3)."""
