@@ -98,6 +98,33 @@ def _words(text):
     return len(text.split())
 
 
+# CCEL keeps chapter headings in <p>, so they reach the aligner as sentences and
+# pair against Latin prose. "Chapter V. To say a word about..." is a heading glued
+# to the paragraph that follows, so strip the marker; a pair whose English is
+# nothing *but* a heading has no Latin counterpart and is dropped.
+_HEADING = re.compile(
+    r"^\s*(?:Chapter|Book|Section|Argument)\s+[IVXLC\d]+\s*[.—:-]+\s*", re.I)
+
+
+def _clean_english(text: str) -> str:
+    return _HEADING.sub("", text, count=1).strip()
+
+
+def _heading_only(text: str) -> bool:
+    """True only for a side that is a bare heading: a "Chapter IV.--" marker with
+    nothing but a title after it.
+
+    Deliberately narrow. Judging "looks like a title" by length alone drops real
+    translations -- "For I believed, and therefore do I speak." is a short
+    sentence ending in a period, not a heading -- so an explicit marker is
+    required, and a heading glued to following prose is kept (and stripped).
+    """
+    m = _HEADING.match(text)
+    if not m:
+        return False
+    return len(text[m.end():].strip()) < 80
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="data/parallel/patristic_latin.jsonl")
@@ -180,17 +207,23 @@ def main():
             state["skipped"] += 1
             return True
 
+        written = 0
         for k, p in enumerate(pairs):
+            if _heading_only(p.tgt):
+                continue
+            written += 1
             fh.write(json.dumps({
-                "src": p.src, "tgt": p.tgt,
+                "src": p.src, "tgt": _clean_english(p.tgt),
                 "citation": f"{cit_tag}#{k}",
                 "src_lang": "la", "era": "late_antique",
                 "source": source,
                 "score": p.score,
             }, ensure_ascii=False) + "\n")
-        state["total"] += len(pairs)
+        state["total"] += written
         state["kept"] += 1
-        row(label, ew, lw, ratio, len(pairs), yield_, "ok")
+        dropped = len(pairs) - written
+        row(label, ew, lw, ratio, written, yield_,
+            "ok" + (f" ({dropped} heading-only dropped)" if dropped else ""))
         return True
 
     print(f"{'unit':<22}{'EN w':>8}{'LA w':>8}{'ratio':>7}{'pairs':>7}{'yield':>7}  note")
