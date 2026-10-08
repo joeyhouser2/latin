@@ -95,7 +95,10 @@ class LatinLibraryConnector(Connector):
         out: List[str] = []
         seen = set()
         for href in hrefs:
-            if not href.lower().endswith(".html"):
+            # The Christian/patristic author pages serve works as .shtml (server-side
+            # includes); .html-only matching silently returned nothing for them --
+            # Tertullian's 37 works all live at tertullian/tertullian.*.shtml.
+            if not href.lower().endswith((".html", ".shtml", ".htm")):
                 continue
             full = urljoin(index_url, href)
             # same site, not a navigation/index page, not the page itself

@@ -32,6 +32,12 @@ class ParagraphExtractor(HTMLParser):
         classes = set((dict(attrs).get("class") or "").split())
         return bool(classes & self.skip_classes)
 
+    def _flush(self) -> None:
+        text = re.sub(r"\s+", " ", "".join(self._buf)).strip()
+        if text:
+            self.paragraphs.append(text)
+        self._buf = []
+
     def handle_starttag(self, tag, attrs):
         if self._should_skip(tag, attrs):
             self._skip_stack.append(tag)
@@ -39,8 +45,12 @@ class ParagraphExtractor(HTMLParser):
         if self._skip_stack:
             return
         if tag == "p":
+            # Legacy pages (e.g. The Latin Library's older files) use <P> as an
+            # unclosed separator, so a paragraph often ends at the *next* <P>
+            # rather than at a </P>. Flush first, or the text is discarded.
+            if self._in_p:
+                self._flush()
             self._in_p = True
-            self._buf = []
         elif tag == "br" and self._in_p:
             self._buf.append(" ")
 
@@ -51,11 +61,15 @@ class ParagraphExtractor(HTMLParser):
         if self._skip_stack:
             return
         if tag == "p" and self._in_p:
-            text = re.sub(r"\s+", " ", "".join(self._buf)).strip()
-            if text:
-                self.paragraphs.append(text)
+            self._flush()
             self._in_p = False
-            self._buf = []
+
+    def close(self):
+        # Whatever a never-closed final <P> left buffered is still real text.
+        super().close()
+        if self._in_p:
+            self._flush()
+            self._in_p = False
 
     def handle_data(self, data):
         if not self._skip_stack and self._in_p:
@@ -66,4 +80,5 @@ def extract_paragraphs(html: str, skip_classes: Set[str] = None,
                        skip_tags: Set[str] = None) -> List[str]:
     parser = ParagraphExtractor(skip_tags=skip_tags, skip_classes=skip_classes)
     parser.feed(html)
+    parser.close()        # flushes an unclosed trailing paragraph
     return [unescape(p) for p in parser.paragraphs]
