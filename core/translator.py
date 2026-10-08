@@ -48,6 +48,12 @@ class NLLBTranslator(Translator):
         # proper src_lang prefix. Opt-in so existing Latin/Greek translation
         # (and the fine-tuned models trained under the old behavior) is
         # unchanged; lat_Latn isn't an NLLB-200 language code anyway.
+        # Measured on held-out Greek (scripts/eval_translation.py, 1332 pairs
+        # unseen by all of them): the tag makes every fine-tuned Greek model
+        # WORSE -- v1 chrF 25.3 -> 23.2, v2 27.9 -> 26.5, v3 28.8 -> 27.1
+        # (stock 18.7 -> 18.3, a wash) -- because training/finetune.py used
+        # AutoTokenizer too, so they all trained on untagged input. Don't turn
+        # this on for grc without retraining the models with the tag.
         self.nllb_tokenizer = nllb_tokenizer
         self._tokenizer = None
         self._model = None

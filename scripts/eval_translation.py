@@ -8,8 +8,10 @@ The corpus is shuffled with the SAME fixed seed training uses (42), so a slice
 taken from the end — or from --holdout-from onward — is guaranteed unseen by any
 model that trained on a `--max-pairs` prefix.
 
-Each --model is "LABEL=PATH" with an optional ":norm" suffix to strip Greek
-diacritics for that model (use it for models trained with --normalize-grc).
+Each --model is "LABEL=PATH" with optional suffixes: ":norm" strips Greek
+diacritics for that model (use it for models trained with --normalize-grc), and
+":nllbtok" loads NllbTokenizerFast so the src_lang prefix token is emitted (see
+NLLBTranslator's nllb_tokenizer flag). Suffixes combine, e.g. "v2=PATH:norm:nllbtok".
 PATH may be "stock" for the base facebook/nllb-200-distilled-600M.
 
 Examples:
@@ -46,12 +48,16 @@ def load_pairs(patterns):
 
 def parse_model(spec):
     label, _, path = spec.partition("=")
-    norm = path.endswith(":norm")
-    if norm:
-        path = path[: -len(":norm")]
+    flags = set()
+    while True:   # peel trailing suffixes, in any order
+        head, _, tail = path.rpartition(":")
+        if tail not in ("norm", "nllbtok"):
+            break
+        path = head
+        flags.add(tail)
     if path == "stock":
         path = STOCK
-    return label, path, norm
+    return label, path, "norm" in flags, "nllbtok" in flags
 
 
 def main():
@@ -59,7 +65,8 @@ def main():
     ap.add_argument("--data", nargs="+", required=True)
     ap.add_argument("--lang", choices=["la", "grc"], default="la")
     ap.add_argument("--model", action="append", required=True,
-                    help='"LABEL=PATH" (PATH may be "stock"); add ":norm" to strip Greek diacritics')
+                    help='"LABEL=PATH" (PATH may be "stock"); add ":norm" to strip Greek '
+                         'diacritics, ":nllbtok" to use NllbTokenizerFast')
     ap.add_argument("--test-size", type=int, default=500)
     ap.add_argument("--holdout-from", type=int, default=0,
                     help="take the test slice starting at this shuffled index "
@@ -83,17 +90,18 @@ def main():
 
     rows = []
     for spec in args.model:
-        label, path, norm = parse_model(spec)
+        label, path, norm, nllbtok = parse_model(spec)
         translator = NLLBTranslator(
             model_name=path, src_lang=SRC_LANG[args.lang],
             preprocess=strip_greek_diacritics if norm else None,
+            nllb_tokenizer=nllbtok,
         )
         hyps = translator.translate_batch(srcs, batch_size=args.batch_size)
         chrf = sacrebleu.corpus_chrf(hyps, [refs]).score
         bleu = sacrebleu.corpus_bleu(hyps, [refs]).score
         rows.append((label, chrf, bleu, hyps))
         print(f"  {label:<16} chrF {chrf:5.1f}   BLEU {bleu:5.1f}"
-              f"{'   (norm)' if norm else ''}")
+              f"{'   (norm)' if norm else ''}{'   (nllbtok)' if nllbtok else ''}")
 
     if args.by_era:
         eras = sorted({p.get("era", "?") for p in test})

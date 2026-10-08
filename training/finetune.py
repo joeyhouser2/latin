@@ -61,6 +61,7 @@ class PairDataset(Dataset):
         self.examples = []
         for lang, group in by_lang.items():
             tokenizer.src_lang = SRC_LANG_BY_CODE.get(lang, "lat_Latn")
+            tokenizer.tgt_lang = TGT_LANG   # no-op unless --nllb-tokenizer
             srcs = [p["src"] for p in group]
             if normalize_grc and lang == "grc":
                 from core.normalize import strip_greek_diacritics
@@ -99,6 +100,12 @@ def main():
     ap.add_argument("--max-length", type=int, default=256)
     ap.add_argument("--max-pairs", type=int, default=0,
                     help="cap the corpus to this many (shuffled) pairs; 0 = use all")
+    ap.add_argument("--nllb-tokenizer", action="store_true",
+                    help="load NllbTokenizerFast instead of AutoTokenizer, so the "
+                         "src_lang/tgt_lang prefix tokens are actually emitted "
+                         "(transformers 5.0's AutoTokenizer silently drops them). "
+                         "Models trained with this need NLLBTranslator(nllb_tokenizer=True) "
+                         "at inference, and vice versa -- the two are not interchangeable.")
     ap.add_argument("--normalize-grc", action="store_true",
                     help="strip polytonic diacritics from Greek sources (ancient Greek)")
     args = ap.parse_args()
@@ -122,7 +129,11 @@ def main():
     eval_pairs, train_pairs = pairs[:n_eval], pairs[n_eval:]
     print(f"Train: {len(train_pairs)}  Eval: {len(eval_pairs)}")
 
-    tokenizer = AutoTokenizer.from_pretrained(args.base)
+    if args.nllb_tokenizer:
+        from transformers import NllbTokenizerFast
+        tokenizer = NllbTokenizerFast.from_pretrained(args.base, tgt_lang=TGT_LANG)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.base)
     model = AutoModelForSeq2SeqLM.from_pretrained(args.base)
     collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
