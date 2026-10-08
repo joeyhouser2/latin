@@ -278,6 +278,50 @@ def api_clear_jobs() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# OCR: engines, known gaps, hand-download sources, OCR'd documents
+# ---------------------------------------------------------------------------
+
+def _model_role(name: str) -> str:
+    from ingest import htr
+    if name in htr.HAND_MODELS:
+        return "handwriting"
+    if name in htr.PRINT_MODELS:
+        return "print"
+    return "installed, not in use"
+
+
+@app.get("/api/ocr/status")
+def api_ocr_status() -> Dict[str, Any]:
+    """Everything the OCR page shows, in one call (cheap: no model is loaded)."""
+    from ingest import htr, ocr_images, ocr_notes
+    tess_error = None
+    try:
+        tess = ocr_images.find_tesseract()
+    except Exception as exc:                                   # noqa: BLE001
+        tess, tess_error = None, str(exc)
+    tessdata = REPO_ROOT / "models" / "tessdata"
+    langs = sorted(p.stem for p in tessdata.glob("*.traineddata")) if tessdata.is_dir() else []
+    models = [{"name": p.name, "mb": round(p.stat().st_size / 1e6, 1), "role": _model_role(p.name)}
+              for p in sorted(htr.MODEL_DIR.glob("*.mlmodel"))] if htr.MODEL_DIR.is_dir() else []
+    docs = view.ocr_documents()
+    return {
+        "engines": {
+            "tesseract": {"available": tess is not None, "path": tess, "error": tess_error,
+                          "languages": langs},
+            "htr": {"available": htr.available(), "venv": htr._venv_python() is not None,
+                    "models": models, "hand_candidates": htr.HAND_MODELS,
+                    "print_candidates": htr.PRINT_MODELS},
+            "gpus": queue.gpu_status(),
+        },
+        "gaps": ocr_notes.GAPS,
+        "manual_sources": ocr_notes.MANUAL_SOURCES,
+        "documents": docs,
+        "by_engine": {e: sum(1 for d in docs if d["ocr"] == e)
+                      for e in sorted({d["ocr"] for d in docs})},
+    }
+
+
+# ---------------------------------------------------------------------------
 # Source catalogues (browse before you ingest)
 # ---------------------------------------------------------------------------
 

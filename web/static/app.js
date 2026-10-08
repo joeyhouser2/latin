@@ -21,6 +21,7 @@ const state = {
   readerView: 'literal',
   readerSection: '',
   files: { root: 'data', path: '', entries: [], preview: null },
+  ocr: { data: null, loading: false, path: '', title: '' },
   catalog: { source: 'treatises', query: 'usury', items: [], loading: false,
             identSource: 'mdz', ident: '' },
   jobs: [],
@@ -893,7 +894,7 @@ async function runSearch() {
 function render() {
   const views = {
     library: viewLibrary, reader: viewReader, files: viewFiles,
-    catalog: viewCatalog, jobs: viewJobs, search: viewSearch, summaries: viewSummaries,
+    catalog: viewCatalog, ocr: viewOcr, jobs: viewJobs, search: viewSearch, summaries: viewSummaries,
   };
   main.innerHTML = views[state.view]();
   document.querySelectorAll('nav.side button[data-view]').forEach(b =>
@@ -924,13 +925,14 @@ async function go(view) {
       }).catch(() => {});
     }
   }
+  if (view === 'ocr') { render(); await loadOcr(); }
   if (view === 'summaries' && !state.summ.items.length) { render(); return runSummarySearch(); }
   render();
 }
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-view],[data-open],[data-page],[data-cd],[data-peek],' +
-    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-joblog],' +
+    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-ocr-ingest],[data-joblog],' +
     '[data-joblog-close],[data-cancel],[data-requeue],[data-jobs-refresh],[data-jobs-clear],' +
     '[data-queue-doc],[data-queue-selected],[data-queue-filter],[data-select-page],' +
     '[data-select-none],[data-translate-doc],[data-translate-range],[data-stylize-doc],' +
@@ -996,6 +998,7 @@ document.addEventListener('click', async (ev) => {
     if (d.ingest) return queueIngest([state.catalog.items[parseInt(d.ingest, 10)]]);
     if (d.ingestAll !== undefined) return queueIngest(state.catalog.items.filter(r => r.fetchable));
     if (d.ingestIdent !== undefined) return queueIngestIdentifier();
+    if (d.ocrIngest !== undefined) return queueOcrIngest();
 
     if (d.joblog) {
       const data = await api(`/api/jobs/${d.joblog}/log`);
@@ -1070,6 +1073,8 @@ document.addEventListener('input', (ev) => {
   const d = ev.target.dataset;
   if (d.catQuery !== undefined) state.catalog.query = ev.target.value;
   if (d.ident !== undefined) state.catalog.ident = ev.target.value;
+  if (d.ocrPath !== undefined) state.ocr.path = ev.target.value;
+  if (d.ocrTitle !== undefined) state.ocr.title = ev.target.value;
   if (d.opt === 'pages') state.opts.pages = ev.target.value;
   if (d.searchQ !== undefined) state.search.q = ev.target.value;
   if (d.summQ !== undefined) state.summ.q = ev.target.value;
@@ -1150,6 +1155,123 @@ async function queueIngestIdentifier() {
   if (!ident) return toast('Enter an identifier first.', true);
   // The source decides which options matter; text sources just ignore them.
   await queueJob('ingest', { source: c.identSource, identifier: ident, ...ocrParams() });
+}
+
+// ---------------------------------------------------------------------------
+// view: OCR (engines, OCR'd documents, known gaps, sources to download by hand)
+// ---------------------------------------------------------------------------
+
+const SEVERITY = { blocker: ['failed', 'blocks a class of material'],
+                   limit: ['running', 'works, degraded'],
+                   todo: ['queued', 'not done yet'] };
+
+async function loadOcr() {
+  state.ocr.loading = true;
+  try { state.ocr.data = await api('/api/ocr/status'); }
+  catch (e) { toast(e.message, true); }
+  finally { state.ocr.loading = false; }
+}
+
+function viewOcr() {
+  const o = state.ocr, d = o.data;
+  if (!d) return `<h2>OCR</h2><p class="muted">${o.loading ? 'Loading…' : 'No data.'}</p>`;
+  const eng = d.engines, tess = eng.tesseract, htr = eng.htr;
+
+  const models = htr.models.map(m => `
+    <tr><td>${esc(m.name)}</td>
+        <td><span class="badge ${m.role === 'handwriting' ? 'done' : m.role === 'print' ? 'la' : ''}">${esc(m.role)}</span></td>
+        <td class="num muted">${m.mb} MB</td></tr>`).join('');
+
+  const docs = d.documents.map(x => `
+    <tr>
+      <td class="num muted">${x.id}</td>
+      <td class="title"><a data-open="${x.id}">${esc(x.title)}</a>
+        <div class="sub">${esc(x.author || 'Anon.')}${x.century ? ' · ' + centuryLabel(x.century) : ''}
+          ${x.shelfmark ? ' · ' + esc(x.shelfmark) : ''}</div></td>
+      <td><span class="badge queued" title="${esc(x.source || '')}">${esc(x.ocr)}</span></td>
+      <td class="num">${num(x.segments)}</td>
+      <td>${bar(x.translated, x.segments)}</td>
+      <td><button class="btn ghost" data-queue-doc="${x.id}">Translate</button></td>
+    </tr>`).join('');
+
+  const gaps = d.gaps.map(g => {
+    const [cls, hint] = SEVERITY[g.severity] || ['', ''];
+    return `<div class="card">
+      <div><span class="badge ${cls}" title="${esc(hint)}">${esc(g.severity)}</span> <b>${esc(g.title)}</b></div>
+      <p style="margin:0.4rem 0">${esc(g.detail)}</p>
+      <div class="muted"><b>Next:</b> ${esc(g.next)}</div>
+    </div>`;
+  }).join('');
+
+  const manual = d.manual_sources.map(s => `
+    <tr>
+      <td class="title">${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a>` : esc(s.name)}
+        <div class="sub">${esc(s.host)}</div></td>
+      <td>${s.automated === 'manifest'
+            ? '<span class="badge done" title="IIIF manifest URL is routed automatically">automatic</span>'
+            : '<span class="badge failed">by hand</span>'}</td>
+      <td class="num muted">${s.share ?? ''}</td>
+      <td>${esc(s.why)}<div class="sub">${esc(s.how)}</div></td>
+    </tr>`).join('');
+
+  return `
+    <h2>OCR</h2>
+    <p class="muted">Scans become text through Tesseract (print), Kraken print models, or handwriting
+       recognition (manuscripts). The pipeline picks per book by trying each on a few pages and
+       refuses output that is not Latin-like. Full notes: <code>docs/ocr-gaps.md</code>.</p>
+
+    <h3>Engines</h3>
+    <div class="row">
+      <div class="card gpu"><b>Tesseract</b>
+        <div>${tess.available ? '<span class="badge done">ready</span>' : '<span class="badge failed">missing</span>'}</div>
+        <div class="muted">${tess.languages.length ? esc(tess.languages.join(', ')) : esc(tess.error || 'no models')}</div></div>
+      <div class="card gpu"><b>Handwriting (Kraken)</b>
+        <div>${htr.available ? '<span class="badge done">ready</span>' : '<span class="badge failed">not set up</span>'}</div>
+        <div class="muted">${htr.venv ? 'isolated venv present' : 'no .venv-htr'} · ${htr.models.length} models</div></div>
+      ${(eng.gpus || []).map(g => `<div class="card gpu"><b>GPU ${esc(g.index)}</b>
+        <div class="muted">${esc(String(g.name).replace('NVIDIA GeForce ', ''))}</div>
+        ${bar(g.memory_used, g.memory_total)}
+        <div class="muted">${g.job_id ? 'busy: job #' + g.job_id : 'free of jobs'}</div></div>`).join('')}
+    </div>
+    <table class="grid"><thead><tr><th>Installed model</th><th>Used for</th><th class="num">Size</th></tr></thead>
+      <tbody>${models || '<tr><td colspan="3" class="muted">No models in models/htr/.</td></tr>'}</tbody></table>
+
+    <h3>Ingest a file you downloaded</h3>
+    <p class="muted">For sources that cannot be fetched automatically (list below): save the PDF or a
+       folder of page images on this computer, then give its path. Engine and page range come from
+       the OCR row on the <a data-view="catalog">Find texts</a> page.</p>
+    <div class="row">
+      <input type="text" data-ocr-path value="${esc(o.path)}" style="min-width:26rem"
+             placeholder="C:\\Users\\you\\Downloads\\book.pdf  or a folder of images">
+      <input type="text" data-ocr-title value="${esc(o.title)}" placeholder="title (optional)" style="min-width:14rem">
+      <select data-opt="ocr">${OCR_ENGINES.map(([v, t]) =>
+        `<option value="${v}" ${(state.opts.ocr || 'auto') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+      <label class="inline">pages <input data-opt="pages" value="${esc(state.opts.pages || '')}" placeholder="all" style="width:5rem"></label>
+      <button class="btn" data-ocr-ingest>Queue ingest</button>
+    </div>
+
+    <h3>Documents made from scans <span class="muted">(${d.documents.length})</span></h3>
+    <table class="grid"><thead><tr><th class="num">#</th><th>Work</th><th>Engine</th>
+      <th class="num">Segments</th><th>Translated</th><th></th></tr></thead>
+      <tbody>${docs || '<tr><td colspan="6" class="muted">None yet. Ingests through the OCR engines are stamped and listed here.</td></tr>'}</tbody></table>
+
+    <h3>Known gaps</h3>
+    ${gaps}
+
+    <h3>Sources to download by hand</h3>
+    <p class="muted">Counts are records in a 2,665-record Latin VD17/VD18 sample, for relative size.
+       "automatic" hosts are routed by the connectors (manifest pattern verified); the rest need a person.</p>
+    <table class="grid"><thead><tr><th>Source</th><th>Fetch</th><th class="num">Sample</th><th>Why, and how</th></tr></thead>
+      <tbody>${manual}</tbody></table>`;
+}
+
+async function queueOcrIngest() {
+  const o = state.ocr, path = (o.path || '').trim();
+  if (!path) return toast('Enter the path of a PDF or folder first.', true);
+  await queueJob('ingest', {
+    source: 'ocrimages', identifier: path, title: (o.title || '').trim() || undefined,
+    ...ocrParams(),
+  });
 }
 
 // ---------------------------------------------------------------------------

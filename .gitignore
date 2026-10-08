@@ -256,3 +256,5 @@ data/raw/**/page*.png
 *.ckpt
 *.gguf
 *.onnx
+data/raw/pdf_*/
+data/raw/_*

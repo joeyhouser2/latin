@@ -375,6 +375,11 @@ It searches two catalogues, which do different jobs:
   each installed candidate (`ingest/htr.py: HAND_MODELS / PRINT_MODELS`) on three
   pages and keeps the best, and refuses handwriting output under 50% known words.
   Models live in `models/htr/` (Zenodo, CC-BY/CC0; record ids in `htr.py`).
+* **Known OCR gaps and hand-download sources** are tracked in
+  [`docs/ocr-gaps.md`](docs/ocr-gaps.md), generated from `ingest/ocr_notes.py` and
+  shown on the web app's **OCR** page, which also lists scan-derived documents and
+  takes a downloaded PDF or image folder (`ocrimages` accepts PDFs; it uses the same
+  engine selection as `iiif`).
 * **OCR in the web app.** Find-texts rows are flagged **text**, **scan · library OCR**
   or **scan · OCR needed**; the OCR row above the table picks the engine (auto /
   library / Tesseract / handwriting) and a page range for every ingest you queue,

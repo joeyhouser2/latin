@@ -104,6 +104,14 @@ class LibraryView:
         return {"total": total, "offset": offset, "limit": limit,
                 "items": items[offset:offset + limit]}
 
+    def ocr_documents(self) -> List[Dict[str, Any]]:
+        """Every document whose text came from page images, newest first."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM documents WHERE source LIKE '%OCR%' ORDER BY id DESC").fetchall()
+        counts = self.counts()
+        return [_doc_dict(r, counts.get(r["id"], {})) for r in rows if ocr_of(r["source"])]
+
     def document(self, doc_id: int) -> Optional[Dict[str, Any]]:
         with self._lock:
             row = self.conn.execute("SELECT * FROM documents WHERE id = ?",

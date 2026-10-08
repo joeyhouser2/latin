@@ -22,6 +22,18 @@ class NoReadableCopy(RuntimeError):
     """None of the known digital copies is on a host we can read."""
 
 
+def _follow_redirect(url: str) -> str:
+    """Resolve a persistent-link host whose target encodes the record id."""
+    try:
+        import requests
+        r = requests.get(url, allow_redirects=True, timeout=20, stream=True,
+                         headers={"User-Agent": "Mozilla/5.0"})
+        r.close()
+        return r.url
+    except Exception:                                   # noqa: BLE001
+        return url
+
+
 def route(url: str) -> Optional[Tuple[str, str]]:
     """Map one URL to ``(connector_name, identifier)``, or None."""
     u = url.strip()
@@ -31,6 +43,9 @@ def route(url: str) -> Optional[Tuple[str, str]]:
         m = _BSB.search(u)
         if m:
             return "mdz", m.group(1).lower()
+    if "resolver.staatsbibliothek-berlin.de" in low:
+        u = _follow_redirect(u)
+        low = u.lower()
     m = _IA.search(u)
     if m:
         return "treatises", f"ia:{m.group(1)}"
@@ -50,6 +65,10 @@ _VATLIB = re.compile(r"digi\.vatlib\.it/(?:view|iiif)/(MSS_[\w.\-]+)")
 _GDZ = re.compile(r"resolver\.sub\.uni-goettingen\.de/purl\?(PPN\w+)", re.IGNORECASE)
 _MPI = re.compile(r"dlc\.mpg\.de/(?:piresolver\?id=|api/v1/records/)([\w.\-]+)")
 _GOOBI = re.compile(r"^(https?://[^/]+/viewer)/(?:content|image|api/v1/records)/(PPN\w+)")
+_TUEBINGEN = re.compile(r"(?:opendigi|idb)\.ub\.uni-tuebingen\.de/opendigi/(\w+)")
+_ROSTOCK = re.compile(r"purl\.uni-rostock\.de/rosdok/(ppn\d+)", re.IGNORECASE)
+_WEIMAR = re.compile(r"haab-digital\.klassik-stiftung\.de/viewer/epnresolver\?id=(\d+)")
+_SBB = re.compile(r"digital\.staatsbibliothek-berlin\.de/werkansicht/?\?PPN=(?:PPN)?(\d+)", re.IGNORECASE)
 _ECODICES = re.compile(r"e-codices\.(?:unifr\.ch|ch)/\w+/(?:list/one|description|thumbs)/(\w+)/(\w+)")
 
 
@@ -61,6 +80,10 @@ def iiif_manifest_for(url: str) -> Optional[str]:
         (_GDZ, lambda m: f"https://manifests.sub.uni-goettingen.de/iiif/presentation/{m.group(1)}/manifest"),
         (_MPI, lambda m: f"https://dlc.mpg.de/api/v1/records/{m.group(1)}/manifest"),
         (_GOOBI, lambda m: f"{m.group(1)}/api/v1/records/{m.group(2)}/manifest/"),
+        (_TUEBINGEN, lambda m: f"https://opendigi.ub.uni-tuebingen.de/opendigi/{m.group(1)}/manifest"),
+        (_ROSTOCK, lambda m: f"https://rosdok.uni-rostock.de/api/iiif/presentation/v2/rosdok_{m.group(1).lower()}/manifest"),
+        (_WEIMAR, lambda m: f"https://haab-digital.klassik-stiftung.de/viewer/api/v1/records/{m.group(1)}/manifest/"),
+        (_SBB, lambda m: f"https://content.staatsbibliothek-berlin.de/dc/PPN{m.group(1)}/manifest"),
         (_ECODICES, lambda m: f"https://www.e-codices.unifr.ch/metadata/iiif/{m.group(1)}-{m.group(2)}/manifest.json"),
     ):
         m = pat.search(url)
