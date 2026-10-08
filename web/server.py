@@ -43,7 +43,7 @@ from core.local_llm import OllamaClient                      # noqa: E402
 
 
 view = LibraryView()
-queue = JobQueue()
+queue = JobQueue(corpus_db=view.db_path)
 summaries = SummaryStore()
 # The shared Ollama service, used only to embed search queries (tiny, fast).
 # Summaries themselves are written by jobs on a private, GPU-pinned server.

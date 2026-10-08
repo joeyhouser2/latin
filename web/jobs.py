@@ -317,6 +317,40 @@ class Job:
         return d
 
 
+def _nothing_left_to_translate(corpus: sqlite3.Connection, p: Dict[str, Any]) -> bool:
+    """True when a queued translate job's target has no untranslated segment
+    left, so running it would only load a model to do nothing.
+
+    Mirrors scripts/translate_pending.py's selection (doc, section range,
+    source prefix, language). "Translated" is the same test the reader uses:
+    a non-empty english_text. Re-translation jobs are never pruned: their work
+    is already-translated German segments, which this query cannot see.
+    """
+    if p.get("retranslate_german"):
+        return False
+    sql = ("SELECT 1 FROM segments seg JOIN sections s ON s.id = seg.section_id "
+           "JOIN documents d ON d.id = s.doc_id "
+           "WHERE (seg.english_text IS NULL OR seg.english_text = '')")
+    args: List[Any] = []
+    if p.get("doc_id") is not None:
+        sql += " AND d.id = ?"
+        args.append(int(p["doc_id"]))
+        if p.get("section_first") and p.get("section_last"):
+            # 1-based inclusive range over the doc's sections in `ord` order.
+            sql += (" AND s.id IN (SELECT id FROM sections WHERE doc_id = ? "
+                    "ORDER BY ord LIMIT ? OFFSET ?)")
+            first = max(1, int(p["section_first"]))
+            args += [int(p["doc_id"]), max(0, int(p["section_last"]) - first + 1), first - 1]
+    if p.get("source_prefix"):
+        sql += " AND d.source LIKE ? ESCAPE '\\'"
+        pref = str(p["source_prefix"]).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        args.append(pref + "%")
+    if p.get("language"):
+        sql += " AND d.language = ?"
+        args.append(p["language"])
+    return corpus.execute(sql + " LIMIT 1", args).fetchone() is None
+
+
 def write_scope(kind: str, params: Dict[str, Any]) -> Optional[frozenset]:
     """The documents a corpus-writing job may touch; ``None`` = anything (exclusive).
 
@@ -354,8 +388,10 @@ class JobQueue:
     def __init__(self, db_path: str | os.PathLike = DEFAULT_DB,
                  log_dir: str | os.PathLike = LOG_DIR,
                  repo_root: str | os.PathLike = REPO_ROOT,
-                 gpus: Optional[List[Gpu]] = None):
+                 gpus: Optional[List[Gpu]] = None,
+                 corpus_db: Optional[str | os.PathLike] = None):
         self.db_path = str(db_path)
+        self.corpus_db = Path(corpus_db) if corpus_db else REPO_ROOT / "data" / "corpus.db"
         self.log_dir = Path(log_dir)
         self.repo_root = Path(repo_root)
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -488,7 +524,46 @@ class JobQueue:
             row = self.conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return _row_to_job(row) if row else None
 
+    def prune_translated(self) -> int:
+        """Drop queued translate jobs whose target is already fully translated
+        (by another job, a script, or an earlier run). Returns how many.
+
+        Deleted rather than cancelled: they never ran, so there is nothing to
+        show in the history. Any failure to read the corpus leaves the queue
+        untouched.
+        """
+        if not self.corpus_db.exists():
+            return 0
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT id, params FROM jobs WHERE status='queued' AND kind='translate'"
+            ).fetchall()
+        if not rows:
+            return 0
+        done = []
+        try:
+            corpus = sqlite3.connect(f"{self.corpus_db.as_uri()}?mode=ro", uri=True, timeout=5)
+            try:
+                for r in rows:
+                    if _nothing_left_to_translate(corpus, json.loads(r["params"])):
+                        done.append(r["id"])
+            finally:
+                corpus.close()
+        except (sqlite3.Error, ValueError, TypeError):
+            return 0
+        if not done:
+            return 0
+        with self._lock:
+            # Re-check the status: the scheduler may have claimed one meanwhile.
+            cur = self.conn.execute(
+                f"DELETE FROM jobs WHERE status='queued' AND id IN ({','.join('?' * len(done))})",
+                done,
+            )
+            self.conn.commit()
+            return cur.rowcount
+
     def list(self, limit: int = 100, status: str = "") -> List[Job]:
+        self.prune_translated()
         sql = "SELECT * FROM jobs"
         args: List[Any] = []
         if status:
@@ -599,6 +674,7 @@ class JobQueue:
         taken, and it is not a corpus writer while another writer is running.
         """
         now = _now()
+        self.prune_translated()
         with self._lock:
             rows = self.conn.execute(
                 "SELECT * FROM jobs WHERE status='queued' "
