@@ -244,3 +244,15 @@ data/manuscripts/
 data/raw/probe_*/
 data/raw/bench*/
 data/htr_bench*.json
+
+# Large binaries: scans, page images, model weights (never commit)
+data/raw/**/*.pdf
+data/raw/**/page_*.jpg
+data/raw/**/page*.png
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.onnx
