@@ -519,6 +519,21 @@ Hungarian, Old East Slavic) are far outside NLLB's training data, so treat outpu
 there as a rough gloss. `translation_status` is left `unknown` until
 `scripts/enrich_translation_status.py` checks it.
 
+For the old stages NLLB cannot read, `--engine llm` translates with a local Ollama
+model given a per-stage briefing (spelling conventions, archaic grammar) and the
+work's own metadata (`core/llm_translator.py`). It runs on a private Ollama pinned to
+whichever card `CUDA_VISIBLE_DEVICES` names; use the GPU's UUID from `nvidia-smi -L`,
+since index 0 is not always the same card to CUDA and to nvidia-smi.
+
+```bash
+CUDA_VISIBLE_DEVICES=GPU-xxxx python scripts/translate_pending.py --doc-id 13408     --engine llm --redo          # --redo replaces the existing NLLB translation
+```
+
+Trial results: good on Old East Slavic (the Slovo), usable on Early New High German
+and Old Polish, but it cannot read 12th-century Hungarian and will produce confident
+filler for it. The model's own "low confidence" flag was never raised in testing, so
+do not rely on it; spot-check anything pre-1300.
+
 ```bash
 python scripts/ingest.py vernacular pl:rej-zywot --stage early_modern
 python scripts/ingest.py vernacular all --discover

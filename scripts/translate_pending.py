@@ -154,6 +154,15 @@ def main():
     ap.add_argument("--skip-done-elsewhere", action="store_true",
                     help="skip documents the shared ledger (data/ledger) records as "
                          "fully translated on another computer")
+    ap.add_argument("--engine", choices=["nllb", "llm"], default="nllb",
+                    help="llm: stage-aware local LLM (Ollama, pinned to this process's GPU) "
+                         "for old vernacular documents NLLB cannot read -- only de/fr/it/nl/"
+                         "pl/hu/ru documents are translated; see core/llm_translator.py")
+    ap.add_argument("--llm-model", default=os.environ.get("LATIN_TRANSLATE_MODEL", "gemma4:12b"),
+                    help="Ollama model for --engine llm")
+    ap.add_argument("--redo", action="store_true",
+                    help="also re-translate segments that already have a translation "
+                         "(clears their styled version); for replacing NLLB output with --engine llm")
     ap.add_argument("--batch-size", type=int, default=16, help="model batch size")
     ap.add_argument("--chunk", type=int, default=200,
                     help="segments per DB commit (resume granularity)")
@@ -177,6 +186,12 @@ def main():
         docs = [d for d in docs if d.language == args.language]
     if args.skip_translated:
         docs = [d for d in docs if d.translation_status != "translated"]
+    if args.engine == "llm":
+        keep = [d for d in docs if d.language not in ("la", "grc")]
+        if len(keep) != len(docs):
+            print(f"--engine llm handles vernacular documents only; skipping "
+                  f"{len(docs) - len(keep)} Latin/Greek document(s)")
+        docs = keep
     if args.skip_done_elsewhere:
         # Fully translated on another machine, per the committed ledger
         # (scripts/ledger.py). Anything already finished here is a no-op anyway.
@@ -198,7 +213,7 @@ def main():
         pending = [s
                    for section in _section_slice(full, args.section_range)
                    for s in sorted(section.segments, key=lambda x: x.order)
-                   if not s.is_translated]
+                   if args.redo or not s.is_translated]
         if pending:
             plan.append((d, pending))
     total = sum(len(p) for _, p in plan)
@@ -206,8 +221,23 @@ def main():
 
     grand = 0
     t_start = time.time()
+    server = None
+    if args.engine == "llm":
+        from core.local_llm import PrivateOllama
+        from core.llm_translator import LLMTranslator
+        os.makedirs("data/joblogs", exist_ok=True)
+        server = PrivateOllama(log_path="data/joblogs/ollama-translate.log").__enter__()
+        if not server.client.has_model(args.llm_model):
+            server.__exit__(None, None, None)
+            raise SystemExit(f"model {args.llm_model!r} is not pulled in Ollama")
+        print(f"LLM engine: {args.llm_model}")
     for d, pending in plan:
-        tr = lib.translator_for(d.language, d.language_stage)
+        if server:
+            tr = LLMTranslator(server.client, args.llm_model, d.language, d.language_stage,
+                               title=d.title, author=d.author, century=d.century,
+                               genre=d.genre, note=d.translation_evidence)
+        else:
+            tr = lib.translator_for(d.language, d.language_stage)
         if hasattr(tr, "max_length"):
             tr.max_length = args.max_length
         n = len(pending)
@@ -254,7 +284,8 @@ def main():
                                           batch_size=args.batch_size)
                 results.extend(zip(german, eng))
             results.extend((s, UNTRANSLATABLE_PLACEHOLDER) for s in garbled)
-            lib.store.set_translations([(s.id, e) for s, e in results])
+            lib.store.set_translations([(s.id, e) for s, e in results],
+                                       reset_styled=args.redo)
             done += len(batch)
             grand += len(batch)
             rate = grand / max(time.time() - t_start, 1e-6)
