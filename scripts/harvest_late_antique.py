@@ -31,6 +31,8 @@ import time
 # first (it's imported when pipeline builds the FAISS index) it clashes with
 # torch's and segfaults at the first sentence-transformers import. Warming
 # sentence_transformers here — before pipeline pulls in faiss — fixes the order.
+# (A second, separate trigger -- any HTTPS request before the embedder loads --
+# is guarded centrally in core/__init__.py.)
 import sentence_transformers  # noqa: F401  (import for side effect: load order)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

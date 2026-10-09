@@ -5,11 +5,26 @@ __pycache__/
 
 # Project data artifacts (rebuildable from sources)
 data/*.db
+# SQLite sidecars, and the pre-fix safety backups scripts write beside corpus.db
+# (100-200 MB each -- over GitHub's 100 MB file limit)
+data/*.db-wal
+data/*.db-shm
+data/*.db.bak-*
+data/*.lock
+# harvest/stylize run logs
+data/_*.log
+# Shared record of what's been translated/summarized IS committed: data/ledger/
 data/*.faiss
 data/*.index
 data/*.passages.json
 # mined parallel corpora (rebuildable via scripts/mine_parallel.py)
 data/parallel/
+# job queue logs written by the web app (web/jobs.py)
+data/joblogs/
+# connector mirrors, re-downloadable (ingest/capitularia.py, ingest/celt.py)
+data/raw/capitularia/
+data/raw/celt/
+data/raw/vernacular/
 # fine-tuned translation checkpoints (downloaded/retrained; never commit)
 models/
 
@@ -218,3 +233,28 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# HTR venv (kraken) and downloaded scan/OCR caches
+.venv-htr/
+data/raw/mdz_*/
+data/raw/ocr_*/
+data/raw/iiif_*/
+data/cache/
+data/manuscripts/
+data/raw/probe_*/
+data/raw/bench*/
+data/htr_bench*.json
+
+# Large binaries: scans, page images, model weights (never commit)
+data/raw/**/*.pdf
+data/raw/**/page_*.jpg
+data/raw/**/page*.png
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.onnx
+data/raw/pdf_*/
+data/raw/_*

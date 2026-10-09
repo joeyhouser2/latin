@@ -23,6 +23,18 @@ _SENTENCE_END = re.compile(r"([.;:?!])\s+")
 # Greek: full stop and the Greek question mark ";"/"·" end sentences; "·" is the
 # ano teleia. Latin praenomina abbreviations don't apply.
 _SENTENCE_END_GRC = re.compile(r"([.;?·])\s+")
+# Vernaculars: only . ? ! (plus closing quotes) end a sentence; medieval editions
+# use ; and : as clause punctuation.
+_SENTENCE_END_VERNACULAR = re.compile(r"([.?!…]+[\"'»”’)]*)\s+")
+
+
+# Modern European vernaculars: Latin praenomina abbreviations are meaningless, but
+# a handful of common ones (Dr., St., ul., p., r.) must not end a sentence.
+_ABBREVIATIONS_VERNACULAR = {
+    "dr", "st", "hl", "hr", "fr", "mr", "mme", "ste", "ul", "al", "np", "tzw", "por",
+    "ok", "r", "w", "p", "z", "s", "bzw", "ca", "vgl", "usw", "z.b", "d.h", "u.a",
+    "ср", "см", "т.е", "т.д", "г", "гг", "в", "вв", "ст", "св", "им", "проф",
+}
 
 
 def _looks_like_abbrev(chunk: str) -> bool:
@@ -60,7 +72,11 @@ def segment_text(
 
 def _segment_regex(text: str, lang: str = "la") -> List[str]:
     is_greek = lang == "grc"
-    pattern = _SENTENCE_END_GRC if is_greek else _SENTENCE_END
+    vernacular = lang not in ("la", "grc")
+    # Vernacular prose: only . ? ! end a sentence. Medieval editions use ; and :
+    # as clause punctuation, so splitting there fragments sentences.
+    pattern = (_SENTENCE_END_GRC if is_greek
+               else _SENTENCE_END_VERNACULAR if vernacular else _SENTENCE_END)
     sentences: List[str] = []
     buffer = ""
     last = 0
@@ -68,7 +84,12 @@ def _segment_regex(text: str, lang: str = "la") -> List[str]:
         candidate = text[last:match.end()]
         buffer += candidate
         # Don't break after a Latin abbreviation like "Cn." or "Kal."
-        if not is_greek and _looks_like_abbrev(text[last:match.start() + 1]):
+        if vernacular:
+            word = re.split(r"[\s(]", text[last:match.start() + 1].strip())[-1].rstrip(".?!…").lower()
+            if word in _ABBREVIATIONS_VERNACULAR:
+                last = match.end()
+                continue
+        elif not is_greek and _looks_like_abbrev(text[last:match.start() + 1]):
             last = match.end()
             continue
         sentences.append(buffer.strip())
@@ -77,7 +98,42 @@ def _segment_regex(text: str, lang: str = "la") -> List[str]:
     tail = (buffer + text[last:]).strip()
     if tail:
         sentences.append(tail)
-    return [s for s in sentences if s]
+    sentences = [s for s in sentences if s]
+    if vernacular:
+        sentences = [piece for s in sentences for piece in _split_long(s)]
+    return sentences
+
+
+# NLLB truncates around 256-512 tokens, and medieval prose (the Slovo, chronicles)
+# often runs hundreds of words between full stops. Past this many characters a
+# sentence is cut at its clause punctuation, then at a space, so nothing is lost
+# to truncation.
+_MAX_VERNACULAR_CHARS = 450
+
+
+def _split_long(sentence: str, limit: int = _MAX_VERNACULAR_CHARS) -> List[str]:
+    if len(sentence) <= limit:
+        return [sentence]
+    out: List[str] = []
+    buf = ""
+    for clause in re.split(r"(?<=[;:])\s+", sentence):
+        if buf and len(buf) + 1 + len(clause) > limit:
+            out.append(buf)
+            buf = clause
+        else:
+            buf = f"{buf} {clause}".strip()
+    if buf:
+        out.append(buf)
+    final: List[str] = []
+    for piece in out:
+        while len(piece) > limit:
+            cut = piece.rfind(" ", 0, limit)
+            cut = cut if cut > limit // 2 else limit
+            final.append(piece[:cut].strip())
+            piece = piece[cut:].strip()
+        if piece:
+            final.append(piece)
+    return final
 
 
 def _segment_verse(text: str) -> List[str]:

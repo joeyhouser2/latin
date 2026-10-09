@@ -18,6 +18,7 @@ from core.translator import Translator, NLLBTranslator
 from core.stylizer import Stylizer, LocalLLMStylizer, Seq2SeqStylizer, StyleUnit, PRESETS
 from core.scansion import scan_lines
 from core.segmenter import segment_text
+from ingest.german_detect import is_german
 from core.normalize import embedding_text_for, strip_greek_diacritics
 from core.search import SearchService, SearchHit
 
@@ -38,7 +39,15 @@ TRANSLATOR_MODELS = {
     # falls back to the general Greek default below.
     ("grc", "archaic"): [("models/nllb-greek-archaic", "ell_Grek", True)],
 }
-STOCK_SRC = {"la": "lat_Latn", "grc": "ell_Grek"}
+STOCK_SRC = {"la": "lat_Latn", "grc": "ell_Grek",
+             # Vernaculars: stock NLLB, no fine-tuned models. Old stages (Middle
+             # High German, Middle Dutch, Old Church Slavonic-ish Russian) are far
+             # from what NLLB trained on -- expect rougher output than modern text.
+             "de": "deu_Latn", "fr": "fra_Latn", "it": "ita_Latn", "nl": "nld_Latn",
+             "pl": "pol_Latn", "hu": "hun_Latn", "ru": "rus_Cyrl"}
+# German editorial apparatus embedded in Latin editions (e.g. Dreves/Blume's
+# Analecta Hymnica) goes to stock NLLB as German -- see ingest/german_detect.py.
+GERMAN_SRC = "deu_Latn"
 
 # Stylizer backends: "llm" = prompted local instruct model (rich, slow, all presets);
 # "t5" = the trained fast/offline Victorian model (register baked in, victorian only).
@@ -180,6 +189,35 @@ class Library:
             self._lang_translators[model_key] = self._build_translator(language, language_stage)
         return self._lang_translators[model_key]
 
+    def german_translator(self) -> Translator:
+        """Stock NLLB with German as the source language, for German segments
+        detected inside Latin documents (ingest/german_detect.py). Shares the
+        translator cache so it's loaded at most once."""
+        key = f"stock:{GERMAN_SRC}"
+        if key not in self._lang_translators:
+            self._lang_translators[key] = NLLBTranslator(src_lang=GERMAN_SRC, nllb_tokenizer=True)
+        return self._lang_translators[key]
+
+    def translate_texts(self, texts: List[str], language: str, language_stage: str = "unknown",
+                        batch_size: int = 8) -> List[str]:
+        """Translate a document's segment texts, routing German editorial
+        segments inside Latin documents to the German translator."""
+        translator = self.translator_for(language, language_stage)
+        if language != "la":
+            return translator.translate_batch(texts, batch_size=batch_size)
+        german = [i for i, t in enumerate(texts) if is_german(t)]
+        if not german:
+            return translator.translate_batch(texts, batch_size=batch_size)
+        gset = set(german)
+        other = [i for i in range(len(texts)) if i not in gset]
+        results: List[str] = [""] * len(texts)
+        for idxs, tr in ((other, translator), (german, self.german_translator())):
+            if idxs:
+                out = tr.translate_batch([texts[i] for i in idxs], batch_size=batch_size)
+                for i, e in zip(idxs, out):
+                    results[i] = e
+        return results
+
     @staticmethod
     def _candidates(language: str, language_stage: str) -> list:
         # Stage-specific candidates first, then the per-language default; dedupe so a
@@ -210,7 +248,10 @@ class Library:
                     preprocess=strip_greek_diacritics if normalize else None,
                 )
         print(f"No fine-tuned {language}/{language_stage} model found; using stock NLLB.")
-        return NLLBTranslator(src_lang=STOCK_SRC.get(language, "lat_Latn"))
+        # NLLB's real language codes need the NllbTokenizerFast workaround (see
+        # german_translator); lat_Latn/ell_Grek keep the legacy path.
+        return NLLBTranslator(src_lang=STOCK_SRC.get(language, "lat_Latn"),
+                              nllb_tokenizer=language not in ("la", "grc"))
 
     def translate_document(self, doc_id: int, batch_size: int = 8) -> int:
         """Translate every untranslated segment of a document. Returns count."""
@@ -220,9 +261,9 @@ class Library:
         pending = [s for s in doc.iter_segments() if not s.is_translated]
         if not pending:
             return 0
-        translator = self.translator_for(doc.language, doc.language_stage)
-        englishes = translator.translate_batch(
-            [s.latin_text for s in pending], batch_size=batch_size
+        englishes = self.translate_texts(
+            [s.latin_text for s in pending], doc.language, doc.language_stage,
+            batch_size=batch_size,
         )
         self.store.set_translations(
             [(s.id, en) for s, en in zip(pending, englishes)]

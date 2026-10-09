@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS documents (
     shelfmark                TEXT,
     license                  TEXT,
     has_existing_translation INTEGER NOT NULL DEFAULT 0,
-    translation_status       TEXT NOT NULL DEFAULT 'unknown'
+    translation_status       TEXT NOT NULL DEFAULT 'unknown',
+    translation_evidence     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sections (
@@ -86,6 +87,10 @@ class Store:
             self.conn.execute(
                 "ALTER TABLE documents ADD COLUMN translation_status "
                 "TEXT NOT NULL DEFAULT 'unknown'")
+        if "translation_evidence" not in doc_cols:
+            # The citation behind a translation_status claim ("English
+            # translation listed: King 1987 ..."), so it can be checked.
+            self.conn.execute("ALTER TABLE documents ADD COLUMN translation_evidence TEXT")
 
     # -- write ---------------------------------------------------------------
 
@@ -95,11 +100,13 @@ class Store:
         cur.execute(
             """INSERT INTO documents
                (title, author, century, genre, language, language_stage, source,
-                shelfmark, license, has_existing_translation, translation_status)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                shelfmark, license, has_existing_translation, translation_status,
+                translation_evidence)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (doc.title, doc.author, doc.century, doc.genre, doc.language,
              doc.language_stage, doc.source, doc.shelfmark, doc.license,
-             int(doc.has_existing_translation), doc.translation_status),
+             int(doc.has_existing_translation), doc.translation_status,
+             doc.translation_evidence),
         )
         doc.id = cur.lastrowid
 
@@ -127,16 +134,25 @@ class Store:
         self.conn.commit()
         return doc
 
-    def set_translation_status(self, doc_id: int, status: str) -> None:
+    def set_translation_status(self, doc_id: int, status: str,
+                               evidence: Optional[str] = None) -> None:
         """Set a document's translation_status, keeping the legacy
         has_existing_translation boolean in sync (True iff a translation is
-        known to exist at all, free or paywalled)."""
+        known to exist at all, free or paywalled). ``evidence``, when given,
+        replaces the stored citation; when omitted it is left as it was."""
         exists = status in ("translated", "translated_paywalled")
-        self.conn.execute(
-            "UPDATE documents SET translation_status = ?, "
-            "has_existing_translation = ? WHERE id = ?",
-            (status, int(exists), doc_id),
-        )
+        if evidence is None:
+            self.conn.execute(
+                "UPDATE documents SET translation_status = ?, "
+                "has_existing_translation = ? WHERE id = ?",
+                (status, int(exists), doc_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE documents SET translation_status = ?, "
+                "has_existing_translation = ?, translation_evidence = ? WHERE id = ?",
+                (status, int(exists), evidence, doc_id),
+            )
         self.conn.commit()
 
     def set_translation(self, segment_id: int, english_text: str) -> None:
@@ -146,12 +162,21 @@ class Store:
         )
         self.conn.commit()
 
-    def set_translations(self, pairs: Iterable[tuple]) -> None:
-        """Bulk-write (segment_id, english_text) pairs in one transaction."""
+    def set_translations(self, pairs: Iterable[tuple], reset_styled: bool = False) -> None:
+        """Bulk-write (segment_id, english_text) pairs in one transaction.
+
+        reset_styled=True also clears english_styled/style_label -- use it when
+        *re*-translating, since styling derived from the old English is stale."""
+        pairs = list(pairs)
         self.conn.executemany(
             "UPDATE segments SET english_text = ? WHERE id = ?",
             [(en, sid) for sid, en in pairs],
         )
+        if reset_styled:
+            self.conn.executemany(
+                "UPDATE segments SET english_styled = NULL, style_label = NULL WHERE id = ?",
+                [(sid,) for sid, _ in pairs],
+            )
         self.conn.commit()
 
     def set_styled(self, triples: Iterable[tuple]) -> None:
@@ -271,6 +296,8 @@ class Store:
             has_existing_translation=bool(row["has_existing_translation"]),
             translation_status=(row["translation_status"]
                                 if "translation_status" in keys else "unknown"),
+            translation_evidence=(row["translation_evidence"]
+                                  if "translation_evidence" in keys else None),
         )
 
     @staticmethod

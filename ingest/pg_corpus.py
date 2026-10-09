@@ -54,6 +54,20 @@ class PGCorpusConnector(Connector):
         )
 
     def fetch(self, identifier: str, **meta_overrides) -> RawWork:
+        if identifier.strip().startswith("ia:"):
+            from .treatises import TreatisesConnector
+            ia_id = identifier.strip()[3:]
+            m = re.search(r"vol_0*(\d+)|cursus0*(\d+)migngoog", ia_id)
+            num = int(next(g for g in m.groups() if g)) if m else None
+            who = self.VOLUME_AUTHORS.get(num) if num else None
+            meta, parts = TreatisesConnector(timeout=self.timeout).fetch(ia_id)
+            meta.update({"language": "grc", "language_stage": "late_antique",
+                         "title": f"Patrologia Graeca {num} (Migne, archive.org scan)"
+                                  if num else meta["title"],
+                         "author": who[0] if who else meta.get("author"),
+                         "translation_status": UNKNOWN})
+            meta.update({k: v for k, v in meta_overrides.items() if v is not None})
+            return meta, parts
         vol = self._normalize(identifier)
         download_url = self._text_download_url(vol)
         resp = self.session.get(download_url, timeout=self.timeout)
@@ -63,7 +77,7 @@ class PGCorpusConnector(Connector):
         parts = self._split_by_marker(resp.text, vol)
         meta = {
             "title": f"Patrologia Graeca {self._vol_num(vol)} (Migne, OCR)",
-            "author": None,                 # a PG volume bundles several authors
+            "author": (self.VOLUME_AUTHORS.get(int(self._vol_num(vol).split("_")[0])) or (None, None))[0],
             "language": "grc",
             "language_stage": "late_antique",
             "source": f"PG Corpus ({vol})",
@@ -83,6 +97,87 @@ class PGCorpusConnector(Connector):
         if q not in ("all", "", "pg"):
             vols = [v for v in vols if q in v.lower()]
         return vols[:limit]
+
+    # Volumes whose author is known; a PG volume otherwise bundles several.
+    # Chrysostom runs PG 47-64 (the Old Testament homilies are 53-56: Genesis
+    # 53-54, Psalms 55, Isaiah/Job etc. 56; New Testament homilies 57-63).
+    VOLUME_AUTHORS = {n: ("Ioannes Chrysostomus", "John Chrysostom")
+                      for n in range(47, 65)}
+    VOLUME_NOTES = {
+        53: "Homilies on Genesis (1-32)", 54: "Homilies on Genesis (33-67), Psalms",
+        55: "Expositions on the Psalms", 56: "Isaiah, Job, Jeremiah; spuria",
+        57: "Matthew (1-45)", 58: "Matthew (46-90)", 59: "John (1-88)",
+    }
+
+    def catalog(self, query: str = "all", limit: int = 200):
+        """Volume records for the UI. ``query`` may be 'all', 'chrysostom', or a
+        substring of a volume id / note. Every record is fetchable."""
+        q = query.strip().lower()
+        out = []
+        have = set()
+        for vol in self.discover("all", limit=1000):
+            have.add(int(self._vol_num(vol).split("_")[0]))
+            num = int(self._vol_num(vol).split("_")[0])
+            who = self.VOLUME_AUTHORS.get(num)
+            note = self.VOLUME_NOTES.get(num, "")
+            hay = f"{vol} {who[0] + ' ' + who[1] if who else ''} {note}".lower()
+            if q not in ("all", "", "pg") and q not in hay:
+                continue
+            out.append({
+                "catalogue": "pg_corpus", "identifier": vol,
+                "title": f"Patrologia Graeca {num}" + (f" — {note}" if note else ""),
+                "author": who[1] if who else None,
+                "publisher": "Migne PG (Calfa OCR)",
+                "year": None, "lang_code": "grc", "genre": "patristic",
+                "fetchable": True,
+                "translation_status": "unknown",
+                "url": f"https://github.com/{self.REPO}/tree/main/{vol}",
+            })
+            if len(out) >= limit:
+                break
+        # Calfa has only ~33 volumes; Chrysostom (PG 47-64) is not among them.
+        # Fall back to Migne's scans on archive.org (Greek + Latin columns
+        # together in one OCR stream, so noisier than Calfa's Greek-only text).
+        missing = [n for n in sorted(self.VOLUME_AUTHORS) if n not in have]
+        if missing and len(out) < limit:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                found = list(pool.map(self._ia_volume, missing))
+            for num, rec in zip(missing, found):
+                if not rec:
+                    continue
+                note = self.VOLUME_NOTES.get(num, "")
+                who = self.VOLUME_AUTHORS[num]
+                hay = f"pg{num:03d} {who[0]} {who[1]} {note}".lower()
+                if q not in ("all", "", "pg") and q not in hay:
+                    continue
+                out.append(rec | {"note": "archive.org scan of Migne; Greek and Latin columns interleaved"})
+        return out[:limit]
+
+    def _ia_volume(self, num: int):
+        """The archive.org item for PG volume ``num``, or None."""
+        try:
+            r = self.session.get("https://archive.org/advancedsearch.php", params={
+                "q": f"identifier:(patrologiae_cursus_completus_gr_vol_{num:03d}* OR "
+                     f"patrologicursus{num}migngoog) AND mediatype:texts",
+                "fl[]": ["identifier", "title"], "rows": 1, "output": "json",
+            }, timeout=self.timeout).json()
+            docs = r["response"]["docs"]
+        except Exception:                                      # noqa: BLE001
+            return None
+        if not docs:
+            return None
+        ident = docs[0]["identifier"]
+        who = self.VOLUME_AUTHORS[num]
+        note = self.VOLUME_NOTES.get(num, "")
+        return {
+            "catalogue": "archive", "identifier": f"ia:{ident}",
+            "title": f"Patrologia Graeca {num}" + (f" — {note}" if note else ""),
+            "author": who[1], "publisher": "Migne PG (archive.org scan)",
+            "year": None, "lang_code": "grc", "genre": "patristic",
+            "fetchable": True, "translation_status": "unknown",
+            "url": f"https://archive.org/details/{ident}",
+        }
 
     # -- helpers -------------------------------------------------------------
 

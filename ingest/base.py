@@ -77,5 +77,6 @@ class Connector(ABC):
             license=meta.get("license"),
             has_existing_translation=meta.get("has_existing_translation", False),
             translation_status=meta.get("translation_status", "unknown"),
+            translation_evidence=meta.get("translation_evidence"),
             sections=sections,
         )

@@ -58,7 +58,10 @@ class StylePreset:
 _FAITHFUL = (
     "Stay strictly faithful to the meaning of the literal translation: do not add, "
     "drop, or invent content, names, or imagery. Output only the rewritten text "
-    "with no preamble, notes, or quotation marks."
+    "with no preamble, notes, or quotation marks. Your output must be English "
+    "prose -- never Latin, Greek, or any other language, even if the literal "
+    "translation given to you looks incomplete, garbled, or hard to follow; do "
+    "your best with what's there rather than reverting to the source language."
 )
 
 PRESETS = {
@@ -137,6 +140,41 @@ PRESETS = {
 
 DEFAULT_PRESET = "victorian_prose"
 
+# Cheap function-word discriminator: when the "literal translation" fed to the
+# stylizer is itself incoherent (garbled OCR source -> a bad NLLB translation),
+# the LLM sometimes gives up on the English-rewriting task entirely and just
+# paraphrases the source-language text quoted in its own prompt (see
+# _meta_block) -- but keeps writing in *that* language instead of English.
+# Found via a real case: ~5% of one document's styled output turned out to be
+# fluent-looking Latin, not English, because the underlying literal
+# translations were repetition-loop garbage the model had nothing to work
+# with. Exact-word-boundary matching against a short, high-frequency function
+# word list is enough to catch this cheaply without a real language-ID model.
+_EN_FUNCTION_WORDS = frozenset(
+    "the and of to is in that which be was were are it as with for on this by "
+    "an a his her their they he she we you not have has had".split()
+)
+_LATIN_FUNCTION_WORDS = frozenset(
+    "et in ad est qui quae quod sunt non cum sed ut si de ex per atque ac vel "
+    "aut qua quam quum quia ita eis ei hic haec hoc his ille illa illud iam "
+    "enim autem tamen nam quoque etiam esse sit sic suos suas suus sua eorum "
+    "omnia omnes magis potius".split()
+)
+_WORD_RE = re.compile(r"[A-Za-z']+")
+
+
+def looks_non_english(text: str, min_signal: int = 3) -> bool:
+    """True if function-word evidence favors Latin over English. Requires at
+    least `min_signal` total function-word hits before judging (too little
+    text either way -> not flagged, since a short phrase can't be
+    distinguished reliably and false alarms would just waste a retry)."""
+    words = _WORD_RE.findall((text or "").lower())
+    if not words:
+        return False
+    en = sum(1 for w in words if w in _EN_FUNCTION_WORDS)
+    la = sum(1 for w in words if w in _LATIN_FUNCTION_WORDS)
+    return (en + la) >= min_signal and la > en
+
 
 def _meta_block(unit: StyleUnit, preset: StylePreset, context: Optional[dict]) -> str:
     """Optional context lines (source text, author/era, meter) prepended to the
@@ -177,9 +215,22 @@ class Stylizer(ABC):
             return []
         spec = PRESETS[preset]
         passage = self._try_passage(units, spec, context)
-        if passage is not None:
-            return passage
-        return [self._stylize_one(u, spec, context) for u in units]
+        results = (passage if passage is not None
+                   else [self._stylize_one(u, spec, context) for u in units])
+
+        # Guard against the LLM reverting to the source language when the
+        # literal translation it was given was too garbled to work with (see
+        # looks_non_english's docstring) -- retry just the affected unit(s)
+        # individually with a firmer one-off reminder; if that still fails,
+        # fall back to the literal translation itself. Imperfect English
+        # prose beats confidently-wrong Latin silently occupying the styled
+        # English column.
+        for i, (unit, text) in enumerate(zip(units, results)):
+            if not looks_non_english(text):
+                continue
+            retried = self._stylize_one(unit, spec, context, extra_reminder=True)
+            results[i] = unit.literal.strip() if looks_non_english(retried) else retried
+        return results
 
     def stylize(
         self, literal: str, *, source: Optional[str] = None,
@@ -193,7 +244,8 @@ class Stylizer(ABC):
     # -- internals -----------------------------------------------------------
 
     def _stylize_one(
-        self, unit: StyleUnit, spec: StylePreset, context: Optional[dict]
+        self, unit: StyleUnit, spec: StylePreset, context: Optional[dict],
+        extra_reminder: bool = False,
     ) -> str:
         if not unit.literal or not unit.literal.strip():
             return ""
@@ -201,6 +253,9 @@ class Stylizer(ABC):
             literal=unit.literal.strip(),
             meta=_meta_block(unit, spec, context),
         )
+        if extra_reminder:
+            user += ("\n\nReminder: respond in English. Do not quote or continue in "
+                     "Latin, Greek, or any other source language.")
         return _clean(self._generate(spec.system, user))
 
     def _try_passage(

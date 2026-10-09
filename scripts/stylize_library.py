@@ -11,6 +11,7 @@ Usage:
     CUDA_VISIBLE_DEVICES=1 python scripts/stylize_library.py
     python scripts/stylize_library.py --source-prefix "ALIM (" --limit 2
     python scripts/stylize_library.py --doc-id 42 --batch-size 10
+    python scripts/stylize_library.py --doc-id 42 --section-range 2 5
 """
 from __future__ import annotations
 
@@ -48,6 +49,21 @@ def stylize_batch_safe(stylizer, units, preset, context, batch_size):
                 + stylize_batch_safe(stylizer, units[mid:], preset, context, batch_size))
 
 
+def _section_slice(doc, section_range):
+    """The document's sections narrowed to a 1-based inclusive range.
+
+    Matches the range picker in book_creator's corpus tab, which numbers
+    sections from 1 in `ord` order -- so "sections 2-5" means the same thing
+    in both projects, and preparing what you are about to print does not mean
+    translating the whole work.
+    """
+    sections = sorted(doc.sections, key=lambda s: s.order)
+    if not section_range:
+        return sections
+    first, last = section_range
+    return sections[max(1, first) - 1:min(len(sections), last)]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -55,6 +71,8 @@ def main():
                     help="only docs whose source starts with this (e.g. 'ALIM (')")
     ap.add_argument("--language", default="", help="only this language (la/grc)")
     ap.add_argument("--doc-id", type=int, default=None, help="only this document")
+    ap.add_argument("--section-range", type=int, nargs=2, metavar=("FIRST", "LAST"),
+                    default=None, help="only sections FIRST..LAST of the document, 1-based inclusive, in `ord` order (needs --doc-id). Lets a short printed range be prepared without running the whole work.")
     ap.add_argument("--limit", type=int, default=None, help="stop after N documents")
     ap.add_argument("--skip-poetry", action="store_true",
                     help="exclude genre='poetry' docs (verse needs a verse preset, "
@@ -69,6 +87,12 @@ def main():
     ap.add_argument("--shard-index", type=int, default=0,
                     help="which shard this process handles (0-based)")
     args = ap.parse_args()
+
+    # A range means nothing across a whole queue of documents -- each has its
+    # own section numbering, so the same 2..5 would mean a different span in
+    # every one of them.
+    if args.section_range and args.doc_id is None:
+        ap.error("--section-range needs --doc-id: section numbers are per-document")
 
     lib = Library()
     docs = lib.store.list_documents()
@@ -93,7 +117,7 @@ def main():
     for d in docs:
         full = lib.store.get_document(d.id)
         sections = []
-        for section in sorted(full.sections, key=lambda s: s.order):
+        for section in _section_slice(full, args.section_range):
             pending = [s for s in sorted(section.segments, key=lambda x: x.order)
                        if s.is_translated and not s.is_styled]
             segs = []
