@@ -58,10 +58,17 @@ def _read_json(path: Path) -> Dict[str, str]:
         return {}
 
 
+def _read_json_any(path: Path) -> Dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def _guess_cache(folder: Path, engine: str) -> Optional[Path]:
     """For documents with no recorded cache: the fullest cache of the right kind."""
-    pattern = "ocr_*.json" if engine in ("tesseract", "print", "ocr") else "htr*.json"
-    found = sorted(folder.glob(pattern), key=lambda p: (len(_read_json(p)), p.stat().st_mtime),
+    pattern = "ocr_*.json" if engine in ("tesseract", "print", "ocr") else "htr_*.json"
+    found = sorted((p for p in folder.glob(pattern) if not p.name.endswith(".lines.json")), key=lambda p: (len(_read_json(p)), p.stat().st_mtime),
                    reverse=True)
     return found[0] if found else None
 
@@ -138,3 +145,66 @@ class Scans:
             json.dump(fixes, fh, ensure_ascii=False, indent=1)
         os.replace(tmp, path)
         return {"name": name, "corrected": name in fixes, "n_corrected": len(fixes)}
+
+    # ---- line / word confidence (which parts of the page to double-check) ----
+    def _cache_of(self, source: Optional[str]) -> Optional[tuple]:
+        loc = locate(source)
+        if not loc:
+            return None
+        folder: Path = loc["dir"]
+        cache = folder / loc["cache"] if loc["cache"] else _guess_cache(folder, loc["engine"])
+        return (loc, cache) if cache else None
+
+    def lines(self, source: Optional[str], name: str, language: str = "la") -> Optional[Dict[str, Any]]:
+        """Flagged lines and words for a page, or None if it has not been analysed yet."""
+        from ingest import htr, linecheck
+        found = self._cache_of(source)
+        if not found or Path(name).name != name:
+            return None
+        loc, cache = found
+        detail = _read_json_any(Path(htr.lines_path(str(cache)))).get(name)
+        if detail is None:
+            return None
+        lang = "grc" if loc["engine"] == "htr-greek" else language
+        vocab = self._greek_vocab() if lang == "grc" else self._latin_vocab()
+        return linecheck.analyze(detail, vocab, lang)
+
+    def analyze(self, source: Optional[str], name: str, language: str = "la") -> Optional[Dict[str, Any]]:
+        """Compute confidence detail for one page (re-runs the recogniser; needs a free GPU
+        for handwriting models, a second or two for Tesseract)."""
+        from ingest import htr
+        from ingest.ocr_images import ocr_words
+        found = self._cache_of(source)
+        if not found or Path(name).name != name:
+            return None
+        loc, cache = found
+        folder: Path = loc["dir"]
+        img = folder / name
+        if not img.is_file():
+            return None
+        if cache.name.startswith("ocr_"):
+            lang = cache.stem[len("ocr_"):] or "lat"
+            detail = ocr_words(str(img), lang=lang)
+            path = Path(htr.lines_path(str(cache)))
+            store = _read_json_any(path)
+            store[name] = detail
+            path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+        else:
+            model = htr.MODEL_DIR / (cache.stem[len("htr_"):] + ".mlmodel")
+            if not model.exists():
+                raise RuntimeError(f"model {model.name} is not installed, cannot re-read this page")
+            if htr.pick_gpu() is None and not os.environ.get("LATIN_GPU_PINNED"):
+                raise RuntimeError("no GPU has enough free memory right now; try again when a job finishes")
+            htr.transcribe_images([str(img)], cache_path=str(cache), model=str(model),
+                                  log=lambda m: None, detail_only=True)
+        return self.lines(source, name, language)
+
+    def _latin_vocab(self):
+        from ingest import abbrev
+        if self._vocab is None:
+            self._vocab = abbrev.build_vocab()
+        return self._vocab
+
+    def _greek_vocab(self):
+        from ingest import greek
+        return greek.build_vocab()

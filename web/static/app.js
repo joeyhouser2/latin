@@ -22,7 +22,8 @@ const state = {
   readerSection: '',
   files: { root: 'data', path: '', entries: [], preview: null },
   ocr: { data: null, audit: null, auditing: false, loading: false, path: '', title: '' },
-  scan: { docId: null, doc: null, info: null, name: null, page: null, text: '', dirty: false, zoom: 0 },
+  scan: { docId: null, doc: null, info: null, name: null, page: null, text: '', dirty: false, zoom: 0,
+          lines: null, showBoxes: true, hot: null, analyzing: false },
   catalog: { source: 'treatises', query: 'usury', items: [], loading: false,
             identSource: 'mdz', ident: '' },
   jobs: [],
@@ -934,7 +935,7 @@ async function go(view) {
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-view],[data-open],[data-page],[data-cd],[data-peek],' +
-    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-ocr-ingest],[data-scan-open],[data-scan-step],[data-scan-save],[data-scan-revert],[data-scan-zoom],[data-scan-reingest],[data-audit-run],[data-joblog],' +
+    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-ocr-ingest],[data-scan-open],[data-scan-step],[data-scan-save],[data-scan-revert],[data-scan-zoom],[data-scan-reingest],[data-scan-analyze],[data-scan-line],[data-audit-run],[data-joblog],' +
     '[data-joblog-close],[data-cancel],[data-requeue],[data-jobs-refresh],[data-jobs-clear],' +
     '[data-queue-doc],[data-queue-selected],[data-queue-filter],[data-select-page],' +
     '[data-select-none],[data-translate-doc],[data-translate-range],[data-stylize-doc],' +
@@ -1014,6 +1015,8 @@ document.addEventListener('click', async (ev) => {
       return applyScanZoom();
     }
     if (d.scanReingest !== undefined) return reingestScan();
+    if (d.scanAnalyze !== undefined) return analyzeScanPage();
+    if (d.scanLine !== undefined) return hotScanLine(parseInt(d.scanLine, 10));
     if (d.auditRun !== undefined) return runOcrAudit();
 
     if (d.joblog) {
@@ -1084,6 +1087,7 @@ document.addEventListener('change', async (ev) => {
   if (d.identSource !== undefined) { state.catalog.identSource = el.value; return; }
   if (d.opt) { state.opts[d.opt] = el.value; return; }
   if (d.scanPage !== undefined) return loadScanPage(el.value);
+  if (d.scanBoxes !== undefined) { state.scan.showBoxes = el.checked; return drawScanBoxes(); }
 });
 
 document.addEventListener('input', (ev) => {
@@ -1203,6 +1207,9 @@ async function loadScanPage(name) {
   s.name = name;
   s.text = s.page.text;
   s.dirty = false;
+  s.hot = null;
+  s.lines = await api(`/api/scans/${s.docId}/page/${encodeURIComponent(name)}/lines`)
+    .catch(() => ({ lines: null }));
   render();
   const pane = $('#scan-image'); if (pane) pane.scrollTop = 0;
 }
@@ -1234,10 +1241,10 @@ async function saveScanPage(quiet = false) {
 }
 
 function applyScanZoom() {
-  const img = $('#scan-img'); if (!img) return;
+  const wrap = $('#scan-wrap'); if (!wrap) return;
   const z = state.scan.zoom;
-  img.style.width = z ? `${z}%` : '100%';
-  img.style.maxWidth = z ? 'none' : '100%';
+  wrap.style.width = z ? `${z}%` : '100%';
+  wrap.style.maxWidth = z ? 'none' : '100%';
 }
 
 function viewScan() {
@@ -1272,7 +1279,9 @@ function viewScan() {
              Re-ingest with ${info.corrected} correction${info.corrected > 1 ? 's' : ''}</button>` : ''}
     </div>
     <div class="scangrid">
-      <div id="scan-image" class="scanpane"><img id="scan-img" src="${img}" alt="page ${i + 1}"></div>
+      <div id="scan-image" class="scanpane"><div id="scan-wrap" class="scanwrap">
+          <img id="scan-img" src="${img}" alt="page ${i + 1}" onload="drawScanBoxes()">
+          <div id="scan-boxes"></div></div></div>
       <div class="scantext">
         <textarea id="scan-text" data-scan-text spellcheck="false" lang="la">${esc(s.text)}</textarea>
         <div class="row">
@@ -1281,9 +1290,71 @@ function viewScan() {
           <span id="scan-state" class="muted">${s.dirty ? 'unsaved changes' : (s.page && s.page.corrected ? 'corrected ✎' : 'original transcription')}</span>
           <span class="muted">Ctrl+S saves · Alt+←/→ changes page</span>
         </div>
+        ${checkList()}
         ${raw}
       </div>
     </div>`;
+}
+
+function checkList() {
+  const L = state.scan.lines;
+  if (!L || !L.lines) {
+    return `<div class="row"><button class="btn ghost" data-scan-analyze ${state.scan.analyzing ? 'disabled' : ''}>
+        ${state.scan.analyzing ? 'Analysing…' : 'Find doubtful words'}</button>
+      <span class="muted">Re-reads this page to get per-word confidence (a few seconds; handwriting needs a free GPU).</span></div>`;
+  }
+  const bad = L.lines.map((ln, i) => ({ ln, i })).filter(x => x.ln.f >= 1);
+  const words = x => x.ln.w.length
+    ? x.ln.w.map(w => w.f ? `<mark class="f${w.f}" title="confidence ${Math.round(w.c * 100)}%${w.k ? '' : ', not a known word'}">${esc(w.t)}</mark>` : esc(w.t)).join(' ')
+    : esc(x.ln.t);
+  return `<div class="checks">
+      <div class="row"><b>${L.suspect}</b> suspect and <b>${L.weak}</b> weak of ${num(L.words)} words
+        <label class="inline"><input type="checkbox" data-scan-boxes ${state.scan.showBoxes ? 'checked' : ''}> boxes on the image</label>
+        <span class="muted">click a line to find it</span></div>
+      ${bad.length ? bad.map(x => `<div class="chk ${state.scan.hot === x.i ? 'hot' : ''}" data-scan-line="${x.i}">${words(x)}</div>`).join('')
+                   : '<div class="muted">Nothing doubtful on this page.</div>'}
+    </div>`;
+}
+
+function drawScanBoxes() {
+  const img = $('#scan-img'), layer = $('#scan-boxes');
+  if (!img || !layer) return;
+  layer.innerHTML = '';
+  const L = state.scan.lines;
+  if (!L || !L.lines || !state.scan.showBoxes || !img.naturalWidth) return;
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const box = (b, cls) => {
+    const d = document.createElement('div');
+    d.className = `sbox ${cls}`;
+    d.style.cssText = `left:${b[0] / W * 100}%;top:${b[1] / H * 100}%;` +
+      `width:${(b[2] - b[0]) / W * 100}%;height:${(b[3] - b[1]) / H * 100}%`;
+    layer.appendChild(d);
+  };
+  L.lines.forEach((ln, i) => {
+    if (state.scan.hot === i) box(ln.b, 'hot');
+    if (ln.w.length) ln.w.forEach(w => { if (w.f) box(w.b, `f${w.f}`); });
+    else if (ln.f) box(ln.b, `f${ln.f}`);
+  });
+}
+
+function hotScanLine(i) {
+  const s = state.scan;
+  s.hot = s.hot === i ? null : i;
+  document.querySelectorAll('.chk').forEach(el =>
+    el.classList.toggle('hot', parseInt(el.dataset.scanLine, 10) === s.hot));
+  drawScanBoxes();
+  const img = $('#scan-img'), pane = $('#scan-image'), ln = s.lines && s.lines.lines[i];
+  if (s.hot !== null && ln && img && pane && img.naturalHeight)
+    pane.scrollTo({ top: Math.max(0, ln.b[1] / img.naturalHeight * img.clientHeight - 80), behavior: 'smooth' });
+}
+
+async function analyzeScanPage() {
+  const s = state.scan;
+  s.analyzing = true; render();
+  try {
+    s.lines = await api(`/api/scans/${s.docId}/page/${encodeURIComponent(s.name)}/analyze`, { method: 'POST' });
+  } catch (e) { toast(e.message, true); }
+  s.analyzing = false; render();
 }
 
 async function reingestScan() {

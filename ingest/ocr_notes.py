@@ -116,7 +116,9 @@ GAPS: List[Dict[str, Any]] = [
         "detail": ("The scan viewer saves whole-page corrections (corrections.json beside the images) and a "
                    "re-ingest applies them. There is no line-level editing and no export of image/text "
                    "pairs, which is what fine-tuning for uncial needs."),
-        "next": "Line-level correction (segment lines, edit each) and a `ketos`-ready export of corrected pages.",
+        "next": ("Line-level correction (segment lines, edit each) and a `ketos`-ready export of corrected pages. "
+                 "Then measure the doubtful-word flags against corrected pages, and try a vision model "
+                 "on flagged lines only."),
     },
 ]
 

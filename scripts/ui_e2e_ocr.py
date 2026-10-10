@@ -158,6 +158,12 @@ def main() -> int:
             check("transcription beside the image", "Fides" in text and "natura" in text, text[:60])
             page.screenshot(path=str(out / "e2e_1_viewer.png"), full_page=True)
 
+            # --- doubtful words (Tesseract word confidences)
+            page.click("button[data-scan-analyze]")
+            page.wait_for_selector(".checks", timeout=60000)
+            check("'Find doubtful words' analyses a printed page", "words" in page.inner_text(".checks"),
+                  page.inner_text(".checks")[:60].replace(chr(10), " "))
+
             # --- edit + save with Ctrl+S
             page.fill("#scan-text", text + "\n" + EDIT)
             check("unsaved state shown", "unsaved" in page.inner_text("#scan-state"))
@@ -204,6 +210,35 @@ def main() -> int:
                 check("corrected copy contains the edit", EDIT in joined, joined[-60:])
                 check("source records the corrections", "corrected: 1" in (fixed.get("source") or ""),
                       (fixed.get("source") or "")[-50:])
+
+            # --- handwriting page with recorded confidences (St Gall 195 fixture, if present)
+            fixture = REPO / "data" / "raw" / "iiif_f92189c0dd"
+            lines_file = fixture / "htr_manicule-2026-latin_medieval.lines.json"
+            if lines_file.exists():
+                import sqlite3
+                con = sqlite3.connect(str(tmp / "corpus.db"))
+                con.execute("INSERT INTO documents(title, language, source) VALUES (?, 'la', ?)",
+                            ("Fixture: St Gall 195",
+                             "IIIF manifest x [OCR: htr] [scan: iiif_f92189c0dd|htr_manicule-2026-latin_medieval.json]"))
+                con.commit()
+                con.close()
+                page.reload()
+                page.wait_for_selector("h2:has-text('Documents')", timeout=30000)
+                page.click("button[data-view=ocr]")
+                page.wait_for_selector("button[data-scan-open]", timeout=20000)
+                page.locator("table.grid tr", has_text="Fixture: St Gall").first.locator("button[data-scan-open]").click()
+                page.wait_for_selector("#scan-text", timeout=20000)
+                page.select_option("select[data-scan-page]", "page_0020.jpg")
+                page.wait_for_selector(".checks", timeout=20000)
+                page.wait_for_function("document.querySelectorAll('#scan-boxes .sbox').length > 0", timeout=20000)
+                n_boxes = page.locator("#scan-boxes .sbox").count()
+                check("handwriting page shows flagged words on the image", n_boxes >= 1, f"{n_boxes} boxes")
+                page.locator(".chk").first.click()
+                page.wait_for_selector("#scan-boxes .sbox.hot", timeout=5000)
+                check("clicking a doubtful line highlights it on the image", True)
+                page.screenshot(path=str(out / "e2e_4_doubtful.png"), full_page=True)
+            else:
+                print("  SKIP  handwriting fixture not present on this machine")
 
             # --- audit button
             page.click("button[data-view=ocr]")

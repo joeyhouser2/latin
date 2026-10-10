@@ -157,6 +157,28 @@ def api_scan_save(doc_id: int, name: str, body: PageText) -> Dict[str, Any]:
     return out
 
 
+@app.get("/api/scans/{doc_id}/page/{name}/lines")
+def api_scan_lines(doc_id: int, name: str) -> Dict[str, Any]:
+    """Words and lines flagged for a human look (null until the page is analysed)."""
+    doc = view.document(doc_id) or {}
+    out = scans.lines(doc.get("source"), name, doc.get("language") or "la")
+    return out or {"lines": None}
+
+
+@app.post("/api/scans/{doc_id}/page/{name}/analyze")
+def api_scan_analyze(doc_id: int, name: str) -> Dict[str, Any]:
+    doc = view.document(doc_id)
+    if doc is None:
+        raise HTTPException(404, "no such document")
+    try:
+        out = scans.analyze(doc.get("source"), name, doc.get("language") or "la")
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    if out is None:
+        raise HTTPException(404, "no such page")
+    return out
+
+
 @app.get("/api/scans/{doc_id}/image/{name}")
 def api_scan_image(doc_id: int, name: str) -> FileResponse:
     path = scans.image_path(_doc_source(doc_id), name)

@@ -114,16 +114,34 @@ def available() -> bool:
     return _venv_python() is not None and MODEL.exists()
 
 
+def lines_path(cache_path: str) -> str:
+    """Where the per-line confidence detail for a text cache lives."""
+    return cache_path[:-5] + ".lines.json" if cache_path.endswith(".json") else cache_path + ".lines.json"
+
+
 def transcribe_images(paths: List[str], cache_path: Optional[str] = None,
                       model: Optional[str] = None, device: str = "auto",
-                      log: Callable[[str], None] = lambda m: print(m, file=sys.stderr)
-                      ) -> Dict[str, str]:
-    """HTR the images; returns ``{file name: text}``. Resumable via the cache."""
+                      log: Callable[[str], None] = lambda m: print(m, file=sys.stderr),
+                      detail_only: bool = False) -> Dict[str, str]:
+    """HTR the images; returns ``{file name: text}``. Resumable via the cache.
+
+    Per-line/word confidence and boxes go to ``<cache>.lines.json`` (see
+    ``lines_path``). With ``detail_only`` the text cache is left untouched and the
+    pages are re-run just to produce that detail -- how the scan viewer analyses
+    pages transcribed before detail was recorded.
+    """
     cache: Dict[str, str] = {}
+    detail: Dict[str, list] = {}
     if cache_path and os.path.exists(cache_path):
         with open(cache_path, encoding="utf-8") as f:
             cache = json.load(f)
-    todo = [p for p in paths if Path(p).name not in cache]
+    if cache_path and os.path.exists(lines_path(cache_path)):
+        with open(lines_path(cache_path), encoding="utf-8") as f:
+            detail = json.load(f)
+    if detail_only:
+        todo = [p for p in paths if Path(p).name not in detail]
+    else:
+        todo = [p for p in paths if Path(p).name not in cache]
     if cache:
         log(f"  HTR cache: {len(paths) - len(todo)}/{len(paths)} pages already done")
     if todo:
@@ -159,16 +177,22 @@ def transcribe_images(paths: List[str], cache_path: Optional[str] = None,
             if "error" in rec:
                 log(f"  HTR failed on {rec['key']}: {rec['error']}")
                 continue
-            cache[rec["key"]] = rec["text"]
+            if not detail_only:
+                cache[rec["key"]] = rec["text"]
+            if "detail" in rec:
+                detail[rec["key"]] = rec["detail"]
             done += 1
             log(f"  HTR {done}/{len(todo)} {rec['key']}: {rec['lines']} lines "
                 f"in {rec.get('seconds', '?')}s")
             if cache_path:
                 os.makedirs(os.path.dirname(os.path.abspath(cache_path)), exist_ok=True)
-                tmp = cache_path + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(cache, f, ensure_ascii=False)
-                os.replace(tmp, cache_path)
+                for target, payload in ((cache_path, cache), (lines_path(cache_path), detail)):
+                    if payload is cache and detail_only:
+                        continue
+                    tmp = target + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(payload, f, ensure_ascii=False)
+                    os.replace(tmp, target)
         code = proc.wait()
         drain.join(timeout=5)
         if code != 0:

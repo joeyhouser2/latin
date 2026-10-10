@@ -203,3 +203,17 @@ pre.log, pre.preview {
 .rawtext { white-space: pre-wrap; font-size: 0.85rem; background: var(--panel); border: 1px solid var(--line);
   border-radius: 6px; padding: 0.5rem; }
 @media (max-width: 900px) { .scangrid { grid-template-columns: 1fr; height: auto; } .scanpane { max-height: 60vh; } }
+
+/* doubtful words in the scan viewer */
+.scanwrap { position: relative; width: 100%; }
+#scan-boxes { position: absolute; inset: 0; pointer-events: none; }
+.sbox { position: absolute; border-radius: 2px; box-sizing: border-box; }
+.sbox.f2 { border: 2px solid #c0392b; background: rgba(192, 57, 43, 0.14); }
+.sbox.f1 { border: 1.5px solid #d99a1b; background: rgba(217, 154, 27, 0.10); }
+.sbox.hot { border: 2px solid #1f6fd1; background: rgba(31, 111, 209, 0.10); }
+.checks { max-height: 38vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px;
+  padding: 0.4rem 0.6rem; background: var(--panel); }
+.chk { padding: 0.25rem 0.3rem; border-radius: 4px; cursor: pointer; font-family: var(--serif); }
+.chk:hover, .chk.hot { background: rgba(31, 111, 209, 0.12); }
+mark.f2 { background: rgba(192, 57, 43, 0.25); color: inherit; border-radius: 2px; }
+mark.f1 { background: rgba(217, 154, 27, 0.25); color: inherit; border-radius: 2px; }

@@ -99,6 +99,47 @@ def ocr_image(path: str, lang: str = "lat", psm: int = 3,
     return proc.stdout.decode("utf-8", "replace")
 
 
+def ocr_words(path: str, lang: str = "lat", psm: int = 3,
+              tessdata: Optional[str] = None) -> list:
+    """Tesseract with word confidences and boxes, in the same line/word format the
+    handwriting worker produces (``scripts/htr_worker.line_detail``): a list of
+    ``{"t", "c" (0-1), "b": [x0,y0,x1,y1], "w": [{"t", "c", "b"}]}`` per text line."""
+    env = dict(os.environ)
+    tessdata = tessdata or find_tessdata(lang)
+    if tessdata:
+        env["TESSDATA_PREFIX"] = tessdata
+    proc = subprocess.run(
+        [find_tesseract(), str(path), "stdout", "-l", lang, "--psm", str(psm),
+         "-c", "tessedit_create_tsv=1"],
+        env=env, capture_output=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"tesseract failed on {path}: {proc.stderr.decode('utf-8', 'replace')[:300]}")
+    lines: dict = {}
+    for row in proc.stdout.decode("utf-8", "replace").splitlines()[1:]:
+        f = row.split("	")
+        if len(f) < 12 or f[0] != "5" or not f[11].strip():
+            continue                                      # level 5 = word
+        try:
+            conf = float(f[10])
+            x, y, w, h = (int(f[i]) for i in (6, 7, 8, 9))
+        except ValueError:
+            continue
+        if conf < 0:
+            continue
+        key = (f[2], f[3], f[4])
+        word = {"t": f[11].strip(), "c": round(conf / 100.0, 3), "b": [x, y, x + w, y + h]}
+        lines.setdefault(key, []).append(word)
+    out = []
+    for words in lines.values():
+        out.append({"t": " ".join(w["t"] for w in words),
+                    "c": round(sum(w["c"] for w in words) / len(words), 3),
+                    "b": [min(w["b"][0] for w in words), min(w["b"][1] for w in words),
+                          max(w["b"][2] for w in words), max(w["b"][3] for w in words)],
+                    "w": words})
+    return out
+
+
 def ocr_image_bytes(data: bytes, suffix: str = ".jpg", **kw) -> str:
     fd, tmp = tempfile.mkstemp(suffix=suffix)
     try:

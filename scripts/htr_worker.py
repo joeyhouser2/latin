@@ -20,6 +20,33 @@ import sys
 import time
 
 
+def line_detail(r) -> dict:
+    """Per-line and per-word confidence and boxes (image pixels) from one recognised line.
+
+    Line: {"t": text, "c": mean char confidence, "b": [x0,y0,x1,y1], "w": [words]};
+    word: {"t": word, "c": lowest char confidence in it, "b": [x0,y0,x1,y1]}.
+    """
+    text = r.prediction
+    conf = [float(x) for x in r.confidences]
+    xs = [p[0] for p in r.boundary]
+    ys = [p[1] for p in r.boundary]
+    box = [min(xs), min(ys), max(xs), max(ys)]
+    out = {"t": text, "c": round(sum(conf) / len(conf), 3) if conf else 0.0, "b": box, "w": []}
+    cuts = list(r.cuts)
+    if len(cuts) != len(text) or len(conf) != len(text):
+        return out                                   # no per-character geometry: line level only
+    i = 0
+    for chunk in text.split(" "):
+        n = len(chunk)
+        if n:
+            cx = [p[0] for cut in cuts[i:i + n] for p in cut]
+            letters = [conf[i + k] for k, ch in enumerate(chunk) if ch.isalpha()] or conf[i:i + n]
+            out["w"].append({"t": chunk, "c": round(min(letters), 3),       # punctuation never counts against a word
+                             "b": [min(cx), box[1], max(cx), box[3]]})
+        i += n + 1
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True, help="recognition .mlmodel")
@@ -46,9 +73,11 @@ def main() -> int:
             with Image.open(path) as im:
                 im = im.convert("RGB")
                 seg = seg_model.predict(im, seg_cfg)
-                lines = [r.prediction for r in rec_model.predict(im, seg, rec_cfg)]
+                recs = list(rec_model.predict(im, seg, rec_cfg))
+            lines = [r.prediction for r in recs]
             out = {"key": key, "text": "\n".join(l for l in lines if l.strip()),
-                   "lines": len(lines), "seconds": round(time.time() - t0, 1)}
+                   "lines": len(lines), "seconds": round(time.time() - t0, 1),
+                   "detail": [line_detail(r) for r in recs if r.prediction.strip()]}
         except Exception as e:                           # noqa: BLE001
             out = {"key": key, "error": f"{type(e).__name__}: {e}"}
         sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
