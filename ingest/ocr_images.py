@@ -275,7 +275,12 @@ def german_or_latin(stats: Dict[str, float]) -> str:
 def check_latin(text: str, what: str, strict: bool, language: str = "la") -> Tuple[float, str]:
     """Return (rate, warning). Raises if ``strict`` and text isn't Latin-like."""
     rate = latin_function_word_rate(text)
-    if language != "la" or len(text.split()) < 200:
+    n = len(text.split())
+    if language == "la" and strict and (n == 0 or (n >= 3 and rate == 0.0)):
+        # too short for the statistics below, but nothing Latin at all: blank or noise
+        raise ValueError(f"{what}: OCR found {'no text' if n == 0 else 'no Latin words'} "
+                         f"({n} tokens). Blank pages, wrong language model or a damaged scan.")
+    if language != "la" or n < 200:
         return rate, ""
     if rate < 0.02:
         msg = (f"{what}: only {rate:.1%} of OCR tokens are common Latin function "
