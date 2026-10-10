@@ -375,6 +375,8 @@ It searches two catalogues, which do different jobs:
   each installed candidate (`ingest/htr.py: HAND_MODELS / PRINT_MODELS`) on three
   pages and keeps the best, and refuses handwriting output under 50% known words.
   Models live in `models/htr/` (Zenodo, CC-BY/CC0; record ids in `htr.py`).
+* **Scan viewer and corrections.** On the OCR page (or a reader header) **Pages** opens the page image beside its transcription; edit and Ctrl+S saves a per-page correction to `corrections.json` next to the images, and **Re-ingest with corrections** makes a corrected copy (corrections never touch corpus.db directly). Greek minuscule is detected automatically (`#script=greek|latin` forces it). `python -m ingest.ocr_audit --all` scores every long or scan-derived Latin document by known-word rate; results show on the OCR page.
+* **Testing OCR.** `python scripts/ocr_selftest.py` runs the real engines on known text; `python scripts/ui_smoke_ocr.py` clicks through your running app (queues and cancels one job); `python scripts/ui_e2e_ocr.py [--show]` starts a throwaway app with a scratch library and runs a full scan -> viewer -> correction -> re-ingest cycle in a real browser.
 * **Known OCR gaps and hand-download sources** are tracked in
   [`docs/ocr-gaps.md`](docs/ocr-gaps.md), generated from `ingest/ocr_notes.py` and
   shown on the web app's **OCR** page, which also lists scan-derived documents and

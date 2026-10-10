@@ -44,6 +44,10 @@ MODEL = next((p for p in (MODEL_DIR / "catmus-medieval-1.6.0.mlmodel",
 HAND_MODELS = ["catmus-medieval-1.6.0.mlmodel", "manicule-2026-latin_medieval.mlmodel"]
 PRINT_MODELS = ["catmus-print-fondue-large.mlmodel", "reichenau_lat_cat_099218.mlmodel",
                 "CATMuS-Gothic-Print-1.0.0.mlmodel"]
+# Byzantine minuscule, 9th-12th c. Reads Greek hands (Palatine Anthology: 0.40 known
+# Greek words vs 0.25 for CATMuS) and emits only Greek letters, so on Latin hands it
+# scores ~0.06; ingest.iiif uses that gap to tell the scripts apart.
+GREEK_MODELS = ["greek_minuscule_s9-12_NFC.mlmodel"]
 WORKER = _REPO / "scripts" / "htr_worker.py"
 
 SETUP_HINT = (

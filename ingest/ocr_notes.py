@@ -43,12 +43,17 @@ GAPS: List[Dict[str, Any]] = [
         "next": "Per-language expansion, or use an expanding model (Manicule, Frolat `expan`) where it scores well.",
     },
     {
-        "id": "untested-models", "severity": "todo",
-        "title": "Greek, German-handwriting and Old French models are downloaded but not wired in",
-        "detail": ("In `models/htr/`: greek_minuscule_s9-12_NFC, german_handwriting. Not yet "
-                   "benchmarked or selectable; Gallicorpora+ (Old French) not downloaded. "
-                   "Greek print goes only through Tesseract `grc`."),
-        "next": "Add test sets to `scripts/htr_benchmark.py`, then add them to `ingest/htr.py` candidate lists.",
+        "id": "untested-models", "severity": "limit",
+        "title": "Greek handwriting is wired in but thinly tested; German handwriting is not",
+        "detail": ("Byzantine minuscule is detected automatically (or `#script=greek`) and read by "
+                   "greek_minuscule_s9-12: 40% known Greek words on the Palatine Anthology (Heidelberg "
+                   "Pal. gr. 23) against 24% for CATMuS, and 6-9% when it is run on Latin hands, which "
+                   "is how the two scripts are told apart. One book is not a benchmark. german_handwriting "
+                   "reports ~81% character / ~50% word accuracy on its own validation set and has no "
+                   "ground-truth pages here, so it is not selectable; Old French (Gallicorpora+) is not "
+                   "downloaded. Greek print goes only through Tesseract `grc`."),
+        "next": ("Hand-correct a few Greek and Kurrent pages in the scan viewer and use them as ground "
+                 "truth in `scripts/htr_benchmark.py`, then wire in the German model."),
     },
     {
         "id": "walled-sources", "severity": "limit",
@@ -98,15 +103,20 @@ GAPS: List[Dict[str, Any]] = [
     },
     {
         "id": "old-ocr-audit", "severity": "todo",
-        "title": "Older OCR-derived documents have not been quality-checked with the new metric",
-        "detail": "The known-word rate (`abbrev.vocab_hit_rate`) has not been run over the existing library.",
-        "next": "Scan the library, list documents under ~60% known words, queue repair or re-OCR.",
+        "title": "The library audit can only vouch for readable Latin, not for correctness",
+        "detail": ("The known-word audit (OCR page, `python -m ingest.ocr_audit --all`) scored 297 long or "
+                   "scan-derived Latin documents: none under 60% except one Irish annals text full of "
+                   "proper names. But the vocabulary comes from the corpus itself, so a high score only "
+                   "means the words exist, not that the transcription is right."),
+        "next": "Spot-check high-volume documents in the scan viewer; add a held-out vocabulary (e.g. a Latin word list) for an independent score.",
     },
     {
         "id": "no-correction-ui", "severity": "todo",
-        "title": "No way to correct a transcription in the app",
-        "detail": "HTR/OCR output can only be re-run, not edited; corrections are also the training data uncial needs.",
-        "next": "A page-image + transcription side-by-side editor that saves corrected lines.",
+        "title": "Corrections are page-level and not yet exported as training data",
+        "detail": ("The scan viewer saves whole-page corrections (corrections.json beside the images) and a "
+                   "re-ingest applies them. There is no line-level editing and no export of image/text "
+                   "pairs, which is what fine-tuning for uncial needs."),
+        "next": "Line-level correction (segment lines, edit each) and a `ketos`-ready export of corrected pages.",
     },
 ]
 

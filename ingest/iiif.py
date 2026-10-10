@@ -39,7 +39,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from . import abbrev
+from . import abbrev, greek
 from .base import Connector, RawWork
 from .iiif_meta import bibliographic_meta, download_manifest_pages
 from .ocr_images import (assemble, check_latin, german_function_word_rate,
@@ -60,6 +60,8 @@ class HTRQualityError(RuntimeError):
     """The recogniser's output is not Latin-like enough to ingest."""
 
 
+_GREEK_MIN = 0.25            # Greek known-word rate that marks a Greek hand (Latin hands: <0.1)
+_GREEK_REFUSE_BELOW = 0.25
 _HTR_REFUSE_BELOW = 0.50     # vocabulary hit rate of the expanded text
 _HTR_WARN_BELOW = 0.65
 
@@ -187,7 +189,7 @@ class IIIFConnector(Connector):
         psm = int(opts.get("psm", 3))
         workers = int(opts.get("workers", 4))
         engine, pages, rate, stats = self._transcribe(
-            paths, work_dir, mode, lang, psm, workers, strict)
+            paths, work_dir, mode, lang, psm, workers, strict, opts.get("script", "auto"))
         pages, n_fixed = apply_corrections(work_dir, paths, pages)
         meta["_ocr_engine"] = engine
         meta["_ocr_latin_rate"] = rate
@@ -198,7 +200,9 @@ class IIIFConnector(Connector):
         if engine == "tesseract":
             meta["language"] = german_or_latin(stats) if "latin_rate" in stats \
                 else meta.get("language", "la")
-        if engine == "htr":
+        if engine == "htr-greek":
+            meta["language"] = "grc"
+        if engine in ("htr", "htr-greek"):
             meta["language_stage"] = "medieval"
         else:
             meta["language_stage"] = _stage_for(
@@ -211,9 +215,27 @@ class IIIFConnector(Connector):
             print(f"  WARNING {warn}", file=sys.stderr)
         return meta, assemble(pages)
 
+    def _transcribe_greek(self, paths, work_dir, model, gvocab, strict, stats):
+        from . import htr
+        key = lambda p: Path(p).name
+        texts = htr.transcribe_images(paths, cache_path=str(work_dir / f"htr_{model.stem}.json"),
+                                      model=str(model))
+        pages = [texts[key(p)] for p in paths]
+        hit = greek.hit_rate("\n".join(pages), gvocab)
+        stats.update(model=model.name, htr_hit_rate=hit, cache=f"htr_{model.stem}.json")
+        if hit < _GREEK_REFUSE_BELOW and strict:
+            raise HTRQualityError(
+                f"Greek HTR output is only {hit:.0%} known Greek words (needs >= "
+                f"{_GREEK_REFUSE_BELOW:.0%}); this hand is outside the model's training. "
+                f"Re-run with #force=1 to ingest anyway.")
+        if hit < 0.5:
+            print(f"  WARNING Greek HTR is only {hit:.0%} known words -- expect misreadings.",
+                  file=sys.stderr)
+        return "htr-greek", pages, 0.0, stats
+
     # ---- engine choice ----------------------------------------------------
     def _transcribe(self, paths: List[str], work_dir: Path, mode: str, lang: str,
-                    psm: int, workers: int, strict: bool = True
+                    psm: int, workers: int, strict: bool = True, script: str = "auto"
                     ) -> Tuple[str, List[str], float, dict]:
         """Returns (engine, per-page text, latin rate, print-model stats)."""
         key = lambda p: Path(p).name
@@ -284,6 +306,21 @@ class IIIFConnector(Connector):
         best, scores = htr.pick_model(
             spread(paths, 3), models,
             lambda t: abbrev.vocab_hit_rate(abbrev.expand_text(t, vocab), vocab), work_dir)
+        greek_model = (htr.installed(htr.GREEK_MODELS) or [None])[0] if script != "latin" else None
+        if greek_model is not None:
+            sample = spread(paths, 3)
+            gvocab = greek.build_vocab()
+            got = htr.transcribe_images(sample, cache_path=str(work_dir / f"htr_{greek_model.stem}.json"),
+                                        model=str(greek_model), log=lambda m: None)
+            g_hit = greek.hit_rate("\n".join(got.values()), gvocab)
+            l_hit = scores.get(best.name, 0.0) if scores else abbrev.vocab_hit_rate(
+                abbrev.expand_text("\n".join(htr.transcribe_images(
+                    sample, cache_path=str(work_dir / f"htr_{best.stem}.json"),
+                    model=str(best), log=lambda m: None).values()), vocab), vocab)
+            stats["greek_hit_sample"], stats["latin_hit_sample"] = g_hit, l_hit
+            if script == "greek" or (g_hit >= _GREEK_MIN and l_hit < 0.5):
+                print(f"  script: Greek ({g_hit:.0%} Greek words vs {l_hit:.0%} Latin)", file=sys.stderr)
+                return self._transcribe_greek(paths, work_dir, greek_model, gvocab, strict, stats)
         stats["model"] = best.name
         stats["model_scores"] = scores
         cache = work_dir / f"htr_{best.stem}.json"
