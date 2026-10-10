@@ -249,6 +249,13 @@ class PrivateOllama:
 
     def __enter__(self) -> "PrivateOllama":
         exe = shutil.which("ollama")
+        if not exe and os.name == "nt":
+            # The per-user installer doesn't always reach the PATH of an
+            # already-running parent process (app, IDE, terminal).
+            cand = os.path.join(os.environ.get("LOCALAPPDATA", ""),
+                                "Programs", "Ollama", "ollama.exe")
+            if os.path.isfile(cand):
+                exe = cand
         if not exe:
             raise OllamaError("ollama is not installed or not on PATH")
         port = _free_port()
