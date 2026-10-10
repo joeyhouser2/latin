@@ -7,6 +7,7 @@ the vector index can always be rebuilt from it.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import List, Optional, Iterable
@@ -60,7 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_segments_section ON segments(section_id);
 class Store:
     """Thin SQLite wrapper. Use as a context manager or call close()."""
 
-    def __init__(self, path: str = "data/corpus.db"):
+    def __init__(self, path: str = os.environ.get("LATIN_CORPUS_DB") or "data/corpus.db"):
         self.path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(path, timeout=30)

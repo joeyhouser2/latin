@@ -190,3 +190,16 @@ pre.log, pre.preview {
 .jobchip .jc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jobchip .bar { width: 100%; margin: 0.3rem 0 0.2rem; height: 7px; }
 .jobchip .jc-foot { font-size: 0.72rem; }
+
+/* scan viewer */
+.scanbar { align-items: center; margin-bottom: 0.6rem; }
+.scangrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; height: calc(100vh - 250px); min-height: 420px; }
+.scanpane { overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.3rem; }
+.scanpane img { display: block; width: 100%; height: auto; }
+.scantext { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; overflow: auto; }
+.scantext textarea { flex: 1; min-height: 260px; resize: none; padding: 0.7rem; line-height: 1.55;
+  font-family: var(--serif); font-size: 1.05rem; background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; }
+.rawtext { white-space: pre-wrap; font-size: 0.85rem; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 0.5rem; }
+@media (max-width: 900px) { .scangrid { grid-template-columns: 1fr; height: auto; } .scanpane { max-height: 60vh; } }

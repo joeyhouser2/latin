@@ -34,6 +34,7 @@ library's own catalogue.
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -86,6 +87,50 @@ def resolve_manifest_url(identifier: str) -> str:
         "vatlib:/ecodices:/bnf:/bodleian: <id>")
 
 
+# ---- links from a document back to its page images (the web app's scan viewer) ----
+def scan_ref(work_dir: Path) -> str:
+    """``work_dir`` as stored in a document's source: relative to data/raw when inside it."""
+    try:
+        return Path(work_dir).resolve().relative_to((_REPO / "data" / "raw").resolve()).as_posix()
+    except ValueError:
+        return str(Path(work_dir).resolve())
+
+
+def apply_corrections(work_dir: Path, paths: List[str], pages: List[str]) -> Tuple[List[str], int]:
+    """Replace engine output with hand-corrected page text saved by the scan viewer.
+
+    ``corrections.json`` maps page file name -> final text. Corrected pages are used
+    verbatim (they are already expanded Latin), so fixing a transcription survives
+    a re-ingest.
+    """
+    f = Path(work_dir) / "corrections.json"
+    if not f.exists():
+        return pages, 0
+    try:
+        fixes = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return pages, 0
+    out, n = [], 0
+    for p, text in zip(paths, pages):
+        fixed = fixes.get(Path(p).name)
+        if fixed is not None:
+            out.append(fixed)
+            n += 1
+        else:
+            out.append(text)
+    return out, n
+
+
+def write_scan_info(work_dir: Path, identifier: str, connector: str = "iiif") -> None:
+    """Remember what to pass back to ``ingest`` to re-run this scan (used to apply corrections)."""
+    try:
+        Path(work_dir).mkdir(parents=True, exist_ok=True)
+        (Path(work_dir) / "scan.json").write_text(
+            json.dumps({"identifier": identifier, "connector": connector}), encoding="utf-8")
+    except OSError:
+        pass
+
+
 class IIIFConnector(Connector):
     name = "iiif"
 
@@ -120,6 +165,7 @@ class IIIFConnector(Connector):
             lambda n: parse_page_range(opts.get("pages"), n))
         if not paths:
             raise ValueError(f"no page images could be downloaded from {url}")
+        write_scan_info(work_dir, identifier)
 
         meta = {
             **{k: v for k, v in bibliographic_meta(manifest).items() if v},
@@ -142,9 +188,13 @@ class IIIFConnector(Connector):
         workers = int(opts.get("workers", 4))
         engine, pages, rate, stats = self._transcribe(
             paths, work_dir, mode, lang, psm, workers, strict)
+        pages, n_fixed = apply_corrections(work_dir, paths, pages)
         meta["_ocr_engine"] = engine
         meta["_ocr_latin_rate"] = rate
         meta["source"] += f" [OCR: {engine}]"
+        meta["source"] += f" [scan: {scan_ref(work_dir)}|{stats.get('cache', '')}]"
+        if n_fixed:
+            meta["source"] += f" [corrected: {n_fixed} pp.]"
         if engine == "tesseract":
             meta["language"] = german_or_latin(stats) if "latin_rate" in stats \
                 else meta.get("language", "la")
@@ -219,10 +269,12 @@ class IIIFConnector(Connector):
                         model=str(best))
                     pages = [texts[key(p)] for p in paths]
                     stats["model"] = best.name
+                    stats["cache"] = f"htr_{best.stem}.json"
                     return ("kraken-print", pages,
                             latin_function_word_rate("\n".join(pages)), stats)
             texts = ocr_pages(tess_items, cache_path=tess_cache, workers=workers)
             pages = [texts[k] for k, _ in tess_items]
+            stats["cache"] = f"ocr_{lang}.json"
             return "tesseract", pages, latin_function_word_rate("\n".join(pages)), stats
 
         if not htr.available():
@@ -235,6 +287,7 @@ class IIIFConnector(Connector):
         stats["model"] = best.name
         stats["model_scores"] = scores
         cache = work_dir / f"htr_{best.stem}.json"
+        stats["cache"] = cache.name
         texts = htr.transcribe_images(paths, cache_path=str(cache), model=str(best))
         # HTR is graphematic; expand abbreviations so the text can be translated
         # (the raw transcription stays in the cache file beside the page images)

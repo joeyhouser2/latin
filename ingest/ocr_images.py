@@ -361,6 +361,8 @@ class ImageOCRConnector(Connector):
         if not images:
             raise ValueError(f"no pages selected from {base}")
 
+        from .iiif import write_scan_info
+        write_scan_info(work_dir, identifier, "ocrimages")
         meta = {
             "title": title,
             "source": f"Local scan: {path.name}",

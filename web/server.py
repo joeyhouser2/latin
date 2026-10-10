@@ -38,11 +38,13 @@ from ingest.registry import available_sources, get_connector  # noqa: E402
 from web import files as files_mod                          # noqa: E402
 from web.jobs import JOB_KINDS, JobQueue                     # noqa: E402
 from web.library_view import LibraryView                     # noqa: E402
+from web.scans import Scans                                  # noqa: E402
 from core.summaries import HL_CLOSE, HL_OPEN, SummaryStore   # noqa: E402
 from core.local_llm import OllamaClient                      # noqa: E402
 
 
 view = LibraryView()
+scans = Scans()
 queue = JobQueue(corpus_db=view.db_path)
 summaries = SummaryStore()
 # The shared Ollama service, used only to embed search queries (tiny, fast).
@@ -115,6 +117,52 @@ def api_document(doc_id: int) -> Dict[str, Any]:
 def api_segments(doc_id: int, offset: int = 0, limit: int = Query(300, le=2000),
                  section_id: Optional[int] = None) -> Dict[str, Any]:
     return view.segments(doc_id, offset=offset, limit=limit, section_id=section_id)
+
+
+# ---------------------------------------------------------------------------
+# Scan viewer: page image beside its transcription, with corrections
+# ---------------------------------------------------------------------------
+class PageText(BaseModel):
+    text: str
+
+
+def _doc_source(doc_id: int) -> str:
+    doc = view.document(doc_id)
+    if doc is None:
+        raise HTTPException(404, "no such document")
+    return doc.get("source") or ""
+
+
+@app.get("/api/scans/{doc_id}")
+def api_scan_info(doc_id: int) -> Dict[str, Any]:
+    info = scans.info(_doc_source(doc_id))
+    if info is None:
+        raise HTTPException(404, "this document has no page images on this computer")
+    return info
+
+
+@app.get("/api/scans/{doc_id}/page/{name}")
+def api_scan_page(doc_id: int, name: str) -> Dict[str, Any]:
+    page = scans.page(_doc_source(doc_id), name)
+    if page is None:
+        raise HTTPException(404, "no such page")
+    return page
+
+
+@app.put("/api/scans/{doc_id}/page/{name}")
+def api_scan_save(doc_id: int, name: str, body: PageText) -> Dict[str, Any]:
+    out = scans.save(_doc_source(doc_id), name, body.text)
+    if out is None:
+        raise HTTPException(404, "no such page")
+    return out
+
+
+@app.get("/api/scans/{doc_id}/image/{name}")
+def api_scan_image(doc_id: int, name: str) -> FileResponse:
+    path = scans.image_path(_doc_source(doc_id), name)
+    if path is None:
+        raise HTTPException(404, "no such image")
+    return FileResponse(path, headers={"Cache-Control": "max-age=3600"})
 
 
 @app.get("/api/documents/{doc_id}/export")
@@ -288,6 +336,29 @@ def _model_role(name: str) -> str:
     if name in htr.PRINT_MODELS:
         return "print"
     return "installed, not in use"
+
+
+@app.get("/api/ocr/audit")
+def api_ocr_audit() -> Dict[str, Any]:
+    """Last known-word audit of OCR-derived documents (see ingest.ocr_audit)."""
+    from ingest import ocr_audit
+    return ocr_audit.load() or {"at": None, "weak_below": ocr_audit.WEAK, "documents": []}
+
+
+_audit_lock = threading.Lock()
+
+
+@app.post("/api/ocr/audit")
+def api_ocr_audit_run() -> Dict[str, Any]:
+    """Re-score the library (read-only, about a minute) and cache the result."""
+    from ingest import ocr_audit
+    if not _audit_lock.acquire(blocking=False):
+        raise HTTPException(409, "an audit is already running")
+    try:
+        ocr_audit.save(ocr_audit.audit(view.db_path, include_untagged=True))
+    finally:
+        _audit_lock.release()
+    return ocr_audit.load() or {}
 
 
 @app.get("/api/ocr/status")

@@ -21,7 +21,8 @@ const state = {
   readerView: 'literal',
   readerSection: '',
   files: { root: 'data', path: '', entries: [], preview: null },
-  ocr: { data: null, loading: false, path: '', title: '' },
+  ocr: { data: null, audit: null, auditing: false, loading: false, path: '', title: '' },
+  scan: { docId: null, doc: null, info: null, name: null, page: null, text: '', dirty: false, zoom: 0 },
   catalog: { source: 'treatises', query: 'usury', items: [], loading: false,
             identSource: 'mdz', ident: '' },
   jobs: [],
@@ -318,7 +319,8 @@ function viewReader() {
     <h2>${esc(d.title)}</h2>
     <p class="muted">${esc(d.author || 'Anon.')} · ${esc((d.language_stage || '').replace('_', ' '))}
        · ${esc(d.source || '')} · ${num(d.segments)} segments, ${num(d.translated)} translated
-       · <a href="/api/documents/${d.id}/export?column=both" target="_blank">export .txt</a></p>
+       · <a href="/api/documents/${d.id}/export?column=both" target="_blank">export .txt</a>
+       ${d.ocr ? `· <a data-scan-open="${d.id}">view scan pages</a>` : ''}</p>
     ${translationLine(d)}
 
     <div class="row">
@@ -894,7 +896,7 @@ async function runSearch() {
 function render() {
   const views = {
     library: viewLibrary, reader: viewReader, files: viewFiles,
-    catalog: viewCatalog, ocr: viewOcr, jobs: viewJobs, search: viewSearch, summaries: viewSummaries,
+    catalog: viewCatalog, ocr: viewOcr, scan: viewScan, jobs: viewJobs, search: viewSearch, summaries: viewSummaries,
   };
   main.innerHTML = views[state.view]();
   document.querySelectorAll('nav.side button[data-view]').forEach(b =>
@@ -932,7 +934,7 @@ async function go(view) {
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-view],[data-open],[data-page],[data-cd],[data-peek],' +
-    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-ocr-ingest],[data-joblog],' +
+    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-ocr-ingest],[data-scan-open],[data-scan-step],[data-scan-save],[data-scan-revert],[data-scan-zoom],[data-scan-reingest],[data-audit-run],[data-joblog],' +
     '[data-joblog-close],[data-cancel],[data-requeue],[data-jobs-refresh],[data-jobs-clear],' +
     '[data-queue-doc],[data-queue-selected],[data-queue-filter],[data-select-page],' +
     '[data-select-none],[data-translate-doc],[data-translate-range],[data-stylize-doc],' +
@@ -999,6 +1001,20 @@ document.addEventListener('click', async (ev) => {
     if (d.ingestAll !== undefined) return queueIngest(state.catalog.items.filter(r => r.fetchable));
     if (d.ingestIdent !== undefined) return queueIngestIdentifier();
     if (d.ocrIngest !== undefined) return queueOcrIngest();
+    if (d.scanOpen) return openScan(parseInt(d.scanOpen, 10));
+    if (d.scanStep) return scanStep(parseInt(d.scanStep, 10));
+    if (d.scanSave !== undefined) return saveScanPage();
+    if (d.scanRevert !== undefined) {
+      state.scan.text = state.scan.page.ingested; state.scan.dirty = true;
+      await saveScanPage(); return;
+    }
+    if (d.scanZoom !== undefined) {
+      const z = parseInt(d.scanZoom, 10);
+      state.scan.zoom = z === 0 ? 0 : Math.max(50, (state.scan.zoom || 100) + z);
+      return applyScanZoom();
+    }
+    if (d.scanReingest !== undefined) return reingestScan();
+    if (d.auditRun !== undefined) return runOcrAudit();
 
     if (d.joblog) {
       const data = await api(`/api/jobs/${d.joblog}/log`);
@@ -1067,6 +1083,7 @@ document.addEventListener('change', async (ev) => {
   if (d.summLevel !== undefined) { state.summ.level = el.value; return runSummarySearch(); }
   if (d.identSource !== undefined) { state.catalog.identSource = el.value; return; }
   if (d.opt) { state.opts[d.opt] = el.value; return; }
+  if (d.scanPage !== undefined) return loadScanPage(el.value);
 });
 
 document.addEventListener('input', (ev) => {
@@ -1075,6 +1092,10 @@ document.addEventListener('input', (ev) => {
   if (d.ident !== undefined) state.catalog.ident = ev.target.value;
   if (d.ocrPath !== undefined) state.ocr.path = ev.target.value;
   if (d.ocrTitle !== undefined) state.ocr.title = ev.target.value;
+  if (d.scanText !== undefined) {
+    state.scan.text = ev.target.value; state.scan.dirty = true;
+    const st = $('#scan-state'); if (st) st.textContent = 'unsaved changes';
+  }
   if (d.opt === 'pages') state.opts.pages = ev.target.value;
   if (d.searchQ !== undefined) state.search.q = ev.target.value;
   if (d.summQ !== undefined) state.summ.q = ev.target.value;
@@ -1158,6 +1179,123 @@ async function queueIngestIdentifier() {
 }
 
 // ---------------------------------------------------------------------------
+// view: scan viewer (page image beside its transcription; corrections)
+// ---------------------------------------------------------------------------
+
+async function openScan(docId, name) {
+  try {
+    const [doc, info] = await Promise.all([
+      api(`/api/documents/${docId}`), api(`/api/scans/${docId}`)]);
+    const s = state.scan;
+    Object.assign(s, { docId, doc, info, name: null, page: null, text: '', dirty: false });
+    state.view = 'scan';
+    if (!info.pages.length) { render(); return; }
+    // open on the requested page, else the first corrected/transcribed one
+    const first = info.pages.find(p => p.has_text) || info.pages[0];
+    await loadScanPage(name || first.name);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function loadScanPage(name) {
+  const s = state.scan;
+  if (s.dirty) await saveScanPage(true);
+  s.page = await api(`/api/scans/${s.docId}/page/${encodeURIComponent(name)}`);
+  s.name = name;
+  s.text = s.page.text;
+  s.dirty = false;
+  render();
+  const pane = $('#scan-image'); if (pane) pane.scrollTop = 0;
+}
+
+function scanIndex() {
+  const s = state.scan;
+  return s.info ? s.info.pages.findIndex(p => p.name === s.name) : -1;
+}
+
+async function scanStep(delta) {
+  const s = state.scan, i = scanIndex() + delta;
+  if (i < 0 || i >= s.info.pages.length) return;
+  await loadScanPage(s.info.pages[i].name);
+}
+
+async function saveScanPage(quiet = false) {
+  const s = state.scan;
+  if (!s.name || !s.dirty) return;
+  try {
+    const out = await api(`/api/scans/${s.docId}/page/${encodeURIComponent(s.name)}`,
+                          { method: 'PUT', body: { text: s.text } });
+    s.dirty = false;
+    s.page.corrected = out.corrected;
+    const pg = s.info.pages.find(p => p.name === s.name);
+    if (pg) { pg.corrected = out.corrected; pg.has_text = true; }
+    s.info.corrected = s.info.pages.filter(p => p.corrected).length;
+    if (!quiet) { toast(out.corrected ? 'Correction saved.' : 'Matches the original; correction removed.'); render(); }
+  } catch (e) { toast(e.message, true); }
+}
+
+function applyScanZoom() {
+  const img = $('#scan-img'); if (!img) return;
+  const z = state.scan.zoom;
+  img.style.width = z ? `${z}%` : '100%';
+  img.style.maxWidth = z ? 'none' : '100%';
+}
+
+function viewScan() {
+  const s = state.scan;
+  if (!s.doc) return `<h2>Scan viewer</h2><p class="muted">Open one from the
+    <a data-view="ocr">OCR</a> page (Documents made from scans).</p>`;
+  const info = s.info, i = scanIndex();
+  const opts = info.pages.map((p, k) => `
+    <option value="${esc(p.name)}" ${p.name === s.name ? 'selected' : ''}>
+      ${k + 1}. ${esc(p.name.replace(/\.[^.]+$/, ''))}${p.corrected ? ' ✎' : p.has_text ? '' : ' (no text)'}</option>`).join('');
+  if (!info.pages.length)
+    return `<h2>${esc(s.doc.title)}</h2><p class="muted">No page images are stored for this document.</p>`;
+  const img = `/api/scans/${s.docId}/image/${encodeURIComponent(s.name)}`;
+  const raw = s.page && s.page.raw && s.page.raw !== s.page.ingested
+    ? `<details><summary class="muted">Raw model output (before abbreviations were expanded)</summary>
+         <pre class="rawtext">${esc(s.page.raw)}</pre></details>` : '';
+  return `
+    <h2>${esc(s.doc.title)}</h2>
+    <p class="muted"><a data-open="${s.docId}">← back to the reader</a> · engine ${esc(info.engine || '?')}
+       · ${num(info.transcribed)} of ${num(info.pages.length)} pages have text
+       · <span id="scan-fixed">${num(info.corrected)}</span> corrected</p>
+    <div class="row scanbar">
+      <button class="btn ghost" data-scan-step="-1" ${i <= 0 ? 'disabled' : ''}>◀ Prev</button>
+      <select data-scan-page>${opts}</select>
+      <button class="btn ghost" data-scan-step="1" ${i >= info.pages.length - 1 ? 'disabled' : ''}>Next ▶</button>
+      <span class="muted">zoom</span>
+      <button class="btn ghost" data-scan-zoom="-25">−</button>
+      <button class="btn ghost" data-scan-zoom="0">fit</button>
+      <button class="btn ghost" data-scan-zoom="25">+</button>
+      ${info.corrected && info.identifier
+        ? `<button class="btn" data-scan-reingest title="Queue a fresh ingest that uses your corrections">
+             Re-ingest with ${info.corrected} correction${info.corrected > 1 ? 's' : ''}</button>` : ''}
+    </div>
+    <div class="scangrid">
+      <div id="scan-image" class="scanpane"><img id="scan-img" src="${img}" alt="page ${i + 1}"></div>
+      <div class="scantext">
+        <textarea id="scan-text" data-scan-text spellcheck="false" lang="la">${esc(s.text)}</textarea>
+        <div class="row">
+          <button class="btn" data-scan-save>Save correction</button>
+          <button class="btn ghost" data-scan-revert>Revert to original</button>
+          <span id="scan-state" class="muted">${s.dirty ? 'unsaved changes' : (s.page && s.page.corrected ? 'corrected ✎' : 'original transcription')}</span>
+          <span class="muted">Ctrl+S saves · Alt+←/→ changes page</span>
+        </div>
+        ${raw}
+      </div>
+    </div>`;
+}
+
+async function reingestScan() {
+  const s = state.scan, info = s.info;
+  await saveScanPage(true);
+  await queueJob('ingest', {
+    source: info.connector || 'iiif', identifier: info.identifier,
+    title: `${s.doc.title} (corrected)`,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // view: OCR (engines, OCR'd documents, known gaps, sources to download by hand)
 // ---------------------------------------------------------------------------
 
@@ -1167,7 +1305,10 @@ const SEVERITY = { blocker: ['failed', 'blocks a class of material'],
 
 async function loadOcr() {
   state.ocr.loading = true;
-  try { state.ocr.data = await api('/api/ocr/status'); }
+  try {
+    state.ocr.data = await api('/api/ocr/status');
+    state.ocr.audit = await api('/api/ocr/audit').catch(() => null);
+  }
   catch (e) { toast(e.message, true); }
   finally { state.ocr.loading = false; }
 }
@@ -1191,7 +1332,8 @@ function viewOcr() {
       <td><span class="badge queued" title="${esc(x.source || '')}">${esc(x.ocr)}</span></td>
       <td class="num">${num(x.segments)}</td>
       <td>${bar(x.translated, x.segments)}</td>
-      <td><button class="btn ghost" data-queue-doc="${x.id}">Translate</button></td>
+      <td><button class="btn ghost" data-scan-open="${x.id}" title="Page image beside the transcription">Pages</button>
+          <button class="btn ghost" data-queue-doc="${x.id}">Translate</button></td>
     </tr>`).join('');
 
   const gaps = d.gaps.map(g => {
@@ -1256,6 +1398,8 @@ function viewOcr() {
       <th class="num">Segments</th><th>Translated</th><th></th></tr></thead>
       <tbody>${docs || '<tr><td colspan="6" class="muted">None yet. Ingests through the OCR engines are stamped and listed here.</td></tr>'}</tbody></table>
 
+    ${auditSection(o)}
+
     <h3>Known gaps</h3>
     ${gaps}
 
@@ -1264,6 +1408,34 @@ function viewOcr() {
        "automatic" hosts are routed by the connectors (manifest pattern verified); the rest need a person.</p>
     <table class="grid"><thead><tr><th>Source</th><th>Fetch</th><th class="num">Sample</th><th>Why, and how</th></tr></thead>
       <tbody>${manual}</tbody></table>`;
+}
+
+function auditSection(o) {
+  const a = o.audit, weak = a ? a.documents.filter(x => x.rate < a.weak_below) : [];
+  const rows = (a ? a.documents.slice(0, 15) : []).map(x => `
+    <tr><td class="num muted">${x.id}</td>
+        <td class="title"><a data-open="${x.id}">${esc(x.title)}</a></td>
+        <td><span class="badge ${x.rate < a.weak_below ? 'failed' : 'done'}">${Math.round(x.rate * 100)}%</span></td>
+        <td class="muted">${esc(x.engine)}</td><td class="num">${num(x.segments)}</td></tr>`).join('');
+  return `
+    <h3>Library quality audit</h3>
+    <p class="muted">Share of words that are known Latin, over a sample of each long or scan-derived
+       Latin document (about 80% reads well, 30% is noise). ${a && a.at
+        ? `${a.documents.length} documents scored ${new Date(a.at * 1000).toLocaleString()}: <b>${weak.length}</b> below
+           ${Math.round(a.weak_below * 100)}%.` : 'Not run yet.'}
+       The vocabulary comes from the corpus itself, so a low score is reliable and a high one only suggestive.</p>
+    <div class="row"><button class="btn ghost" data-audit-run ${o.auditing ? 'disabled' : ''}>
+      ${o.auditing ? 'Scoring…' : 'Re-run audit'}</button></div>
+    ${rows ? `<table class="grid" id="audit-table"><thead><tr><th class="num">#</th><th>Lowest scoring</th>
+      <th>Known</th><th>Kind</th><th class="num">Segments</th></tr></thead><tbody>${rows}</tbody></table>` : ''}`;
+}
+
+async function runOcrAudit() {
+  const o = state.ocr;
+  o.auditing = true; render();
+  try { o.audit = await api('/api/ocr/audit', { method: 'POST' }); toast('Audit finished.'); }
+  catch (e) { toast(e.message, true); }
+  o.auditing = false; render();
 }
 
 async function queueOcrIngest() {
@@ -1289,3 +1461,10 @@ async function queueOcrIngest() {
   // changes without the user doing anything.
   setInterval(refreshJobs, 4000);
 })();
+
+document.addEventListener('keydown', (ev) => {
+  if (state.view !== 'scan') return;
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); saveScanPage(); }
+  else if (ev.altKey && ev.key === 'ArrowRight') { ev.preventDefault(); scanStep(1); }
+  else if (ev.altKey && ev.key === 'ArrowLeft') { ev.preventDefault(); scanStep(-1); }
+});

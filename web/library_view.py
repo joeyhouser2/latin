@@ -11,6 +11,7 @@ web.jobs), which keeps a single writer on the WAL database at any time.
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import threading
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = REPO_ROOT / "data" / "corpus.db"
+DEFAULT_DB = Path(os.environ.get("LATIN_CORPUS_DB") or REPO_ROOT / "data" / "corpus.db")
 
 # How long the per-document progress counts stay cached. The aggregate is a
 # ~0.3s scan of the segments table; re-running it on every keystroke in the
@@ -216,21 +217,10 @@ class LibraryView:
             self.conn.close()
 
 
-_OCR_TAG = re.compile(r"\[OCR: ([^\]]+)\]")
-
-
 def ocr_of(source: Optional[str]) -> Optional[str]:
-    """How a document's text was made from page images, or None if it was not.
-
-    New scan connectors stamp ``[OCR: engine]`` into ``source``; older documents
-    (archive.org dumps, hand-fixed scans) are recognised by the word OCR.
-    """
-    if not source:
-        return None
-    m = _OCR_TAG.search(source)
-    if m:
-        return m.group(1)
-    return "ocr" if "OCR" in source else None
+    """How a document's text was made from page images, or None if it was not."""
+    from ingest.ocr_audit import engine_of
+    return engine_of(source)
 
 
 def _doc_dict(row: sqlite3.Row, counts: Dict[str, int]) -> Dict[str, Any]:

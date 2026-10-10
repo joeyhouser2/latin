@@ -57,8 +57,8 @@ VICTORIAN_T5_DIR = "models/stylizer-victorian"
 class Library:
     def __init__(
         self,
-        db_path: str = "data/corpus.db",
-        index_path: str = "data/index.faiss",
+        db_path: str = os.environ.get("LATIN_CORPUS_DB") or "data/corpus.db",
+        index_path: str = os.environ.get("LATIN_INDEX") or "data/index.faiss",
         embedder: Optional[Embedder] = None,
         translator: Optional[Translator] = None,
         stylizer: Optional[Stylizer] = None,
