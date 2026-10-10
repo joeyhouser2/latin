@@ -1248,6 +1248,7 @@ function viewOcr() {
         `<option value="${v}" ${(state.opts.ocr || 'auto') === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
       <label class="inline">pages <input data-opt="pages" value="${esc(state.opts.pages || '')}" placeholder="all" style="width:5rem"></label>
       <button class="btn" data-ocr-ingest>Queue ingest</button>
+      ${scheduleControls()}
     </div>
 
     <h3>Documents made from scans <span class="muted">(${d.documents.length})</span></h3>

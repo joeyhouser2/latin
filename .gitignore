@@ -258,3 +258,4 @@ data/raw/**/page*.png
 *.onnx
 data/raw/pdf_*/
 data/raw/_*
+data/ui_smoke/
