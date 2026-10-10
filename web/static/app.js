@@ -1305,7 +1305,7 @@ function checkList() {
   }
   const bad = L.lines.map((ln, i) => ({ ln, i })).filter(x => x.ln.f >= 1);
   const words = x => x.ln.w.length
-    ? x.ln.w.map(w => w.f ? `<mark class="f${w.f}" title="confidence ${Math.round(w.c * 100)}%${w.k ? '' : ', not a known word'}">${esc(w.t)}</mark>` : esc(w.t)).join(' ')
+    ? x.ln.w.map(w => w.f ? `<mark class="f${w.f}" title="confidence ${Math.round(w.c * 100)}%${w.k ? '' : ', not a known word'}${w.split ? ', may join with the next word' : ''}">${esc(w.t)}</mark>` : esc(w.t)).join(' ')
     : esc(x.ln.t);
   return `<div class="checks">
       <div class="row"><b>${L.suspect}</b> suspect and <b>${L.weak}</b> weak of ${num(L.words)} words
