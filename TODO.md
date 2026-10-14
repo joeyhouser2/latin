@@ -22,6 +22,12 @@ Newest decisions at the top of each section.
 - [ ] **Re-translate existing stock-translated docs** with the fine-tuned models (Einhard etc. still show seed-time stock NLLB; currently *deferred* by choice).
 - [ ] **More connectors** — Documenta Catholica Omnia (patristic), EDH (epigraphy). MGH, CAMENA/CroALa, DBBE, archive.org and `treatises`/`gallica` (financial & commercial prose) are done; the generic `tei` connector covers many TEI sources given a URL.
 - [ ] **Improve DigilibLT extraction** — some works (e.g. scholia) parse to ~1 segment; the TEI parsing needs work for unusual structures. Prefer specific `DLT…` ids over bulk `canone` for now.
+- [ ] **Poliziano's Greek epigrams — get a clean Greek text** (input for the `book_creator` repo's `config/poliziano.yaml`, which is parked until this is done). What we hold is unusable: Tesseract's `grc` model over pp. 635–679 of the 1553 Basel *Opera* (Getty copy, archive.org `gri_33125008502938`) gave 408 lines in which the median line is only ~59% clean Greek words and 22% are under 50%; the machine English then transliterates or invents. LaBSE similarity (0.69) hides this, so don't trust it as a quality signal for Greek.
+  - **Find a cleaner witness** — an earlier or better-printed copy of the same epigrams (the 1498 Aldine *Omnia opera* is the obvious candidate; **not confirmed digitised** — check archive.org, Gallica, BSB/MDZ, Google Books). Aldus's Greek type is far more OCR-friendly than the Basel italic-ish setting.
+  - **Then** run the `iiif`/`ocrimages` scan connector with the best Greek model, and hand-check against the page images (the same page-image read that found the Messias scan's skipped pages).
+  - **Don't use** the modern editions as a text source — Ardizzoni (1951, with Italian) and Knox (*I Tatti*, 2018, with English) are in copyright; use them only to check readings.
+  - Output wanted: one verse per line in `book_creator/input/poliziano_epigrammata_grc.txt`, then rebuild the book (`python make_book.py config/poliziano.yaml`) and re-run its proofread (`proofread_all.py --only poliziano`).
+  - Related: *Greek epic weakness* above (the MT side), and *HTR quality* below.
 
 ## Reader / UI
 
