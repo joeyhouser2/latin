@@ -70,11 +70,11 @@ The known-word audit (OCR page, `python -m ingest.ocr_audit --all`) scored 297 l
 
 **Next:** Spot-check high-volume documents in the scan viewer; add a held-out vocabulary (e.g. a Latin word list) for an independent score.
 
-### Corrections are page-level and not yet exported as training data  _(todo)_
+### Line-level ground truth exists but nothing trains on it yet  _(todo)_
 
-The scan viewer saves whole-page corrections (corrections.json beside the images) and a re-ingest applies them. There is no line-level editing and no export of image/text pairs, which is what fine-tuning for uncial needs.
+The scan viewer's Lines tab corrects and verifies one line at a time (line_corrections.json beside the images) and `python -m training.htr_export` writes a Kraken `path`-format set (line PNG + .gt.txt, split by page, plus layout labels for margin/gloss/noise lines). No fine-tune job is queued from the UI yet, and lines cached before outlines were recorded export as box crops.
 
-**Next:** Line-level correction (segment lines, edit each) and a `ketos`-ready export of corrected pages. Then measure the doubtful-word flags against corrected pages, and try a vision model on flagged lines only.
+**Next:** Label pages, export, run the printed `ketos train` command against the nearest base model, and compare validation error on held-out pages. Then add a queue job for it, and use the margin/gloss labels to train a region classifier.
 
 ## Sources to download by hand
 

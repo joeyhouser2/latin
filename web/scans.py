@@ -199,6 +199,107 @@ class Scans:
                                   log=lambda m: None, detail_only=True)
         return self.lines(source, name, language)
 
+    # ---- line-level ground truth (the editor behind the training export) ----
+    KINDS = ("text", "margin", "gloss", "noise")
+
+    def _line_detail(self, source: Optional[str], name: str):
+        """(loc, cache, raw detail list) for a page, or None before it has been analysed."""
+        found = self._cache_of(source)
+        if not found or Path(name).name != name:
+            return None
+        loc, cache = found
+        from ingest import htr
+        detail = _read_json_any(Path(htr.lines_path(str(cache)))).get(name)
+        if not detail:
+            return None
+        return loc, cache, detail
+
+    def line_texts(self, source: Optional[str], name: str) -> Optional[Dict[str, Any]]:
+        """Every line of a page with the user's correction merged in."""
+        got = self._line_detail(source, name)
+        if got is None:
+            return None
+        loc, cache, detail = got
+        store = _read_json_any(loc["dir"] / "line_corrections.json").get(name, {})
+        lines = []
+        for i, ln in enumerate(detail):
+            rec = store.get(str(i))
+            if rec and rec.get("b") != ln.get("b"):
+                rec = None                                   # lines were recomputed since: not this line
+            lines.append({"i": i, "t": rec["t"] if rec else ln["t"], "orig": ln["t"],
+                          "c": ln.get("c", 0), "b": ln["b"],
+                          "kind": rec.get("kind", "text") if rec else "text",
+                          "ok": bool(rec and rec.get("ok")),
+                          "edited": bool(rec and rec["t"] != ln["t"])})
+        return {"lines": lines, "verified": sum(1 for x in lines if x["ok"]),
+                "edited": sum(1 for x in lines if x["edited"])}
+
+    def line_save(self, source: Optional[str], name: str, i: int, text: Optional[str] = None,
+                  kind: Optional[str] = None, ok: Optional[bool] = None,
+                  language: str = "la") -> Optional[Dict[str, Any]]:
+        got = self._line_detail(source, name)
+        if got is None or not 0 <= i < len(got[2]):
+            return None
+        loc, cache, detail = got
+        if kind is not None and kind not in self.KINDS:
+            raise ValueError(f"kind must be one of {', '.join(self.KINDS)}")
+        path = loc["dir"] / "line_corrections.json"
+        store = _read_json_any(path)
+        page = store.setdefault(name, {})
+        ln = detail[i]
+        rec = page.get(str(i))
+        if rec and rec.get("b") != ln.get("b"):
+            rec = None
+        rec = rec or {"t": ln["t"], "orig": ln["t"], "b": ln["b"], "kind": "text", "ok": False}
+        if text is not None:
+            rec["t"] = " ".join(text.splitlines()).strip()
+        if kind is not None:
+            rec["kind"] = kind
+        if ok is not None:
+            rec["ok"] = ok
+        if rec["t"] == rec["orig"] and not rec["ok"] and rec["kind"] == "text":
+            page.pop(str(i), None)                           # back to untouched
+        else:
+            page[str(i)] = rec
+        if not page:
+            store.pop(name, None)
+        store["_meta"] = {"language": "grc" if loc["engine"] == "htr-greek" else language,
+                          "cache": cache.name, "engine": loc["engine"]}
+        fd, tmp = tempfile.mkstemp(dir=str(loc["dir"]), suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(store, fh, ensure_ascii=False, indent=1)
+        os.replace(tmp, path)
+        return self.line_texts(source, name)
+
+    def line_image(self, source: Optional[str], name: str, i: int) -> Optional[bytes]:
+        """PNG crop of one line, with the model's outline applied when it recorded one."""
+        got = self._line_detail(source, name)
+        if got is None or not 0 <= i < len(got[2]):
+            return None
+        loc, _cache, detail = got
+        img = loc["dir"] / name
+        if not img.is_file():
+            return None
+        import io
+        from PIL import Image
+        from training.htr_export import crop_line
+        Image.MAX_IMAGE_PIXELS = None
+        with Image.open(img) as im:
+            crop = crop_line(im, detail[i]["b"], detail[i].get("p"))
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")
+        return buf.getvalue()
+
+    def lines_to_page(self, source: Optional[str], name: str) -> Optional[Dict[str, Any]]:
+        """Make the page's text from its lines: corrected text, noise lines left out."""
+        got = self.line_texts(source, name)
+        if got is None:
+            return None
+        loc = locate(source)
+        raw = "\n".join(x["t"] for x in got["lines"] if x["kind"] != "noise" and x["t"].strip())
+        text = self._expand(raw) if loc and loc["engine"] == "htr" else raw
+        return self.save(source, name, text)
+
     def _latin_vocab(self):
         from ingest import abbrev
         if self._vocab is None:

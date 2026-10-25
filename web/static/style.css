@@ -217,3 +217,19 @@ pre.log, pre.preview {
 .chk:hover, .chk.hot { background: rgba(31, 111, 209, 0.12); }
 mark.f2 { background: rgba(192, 57, 43, 0.25); color: inherit; border-radius: 2px; }
 mark.f1 { background: rgba(217, 154, 27, 0.25); color: inherit; border-radius: 2px; }
+
+/* line editor */
+.tabs { gap: 0.4rem; }
+.lineeditor { display: flex; flex-direction: column; gap: 0.5rem; min-height: 0; }
+.lrows { display: flex; flex-direction: column; gap: 0.35rem; }
+.lrow { border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem; background: var(--panel); }
+.lrow.hot { outline: 2px solid #1f6fd1; }
+.lrow.ok { border-left: 4px solid #2e9e5b; }
+.lrow.kind-margin, .lrow.kind-gloss { border-left: 4px solid #c58a1a; }
+.lrow.kind-noise { border-left: 4px solid #888; opacity: 0.7; }
+.limg { display: block; max-width: 100%; max-height: 90px; min-height: 22px; margin-bottom: 0.25rem; }
+.lctl { display: flex; gap: 0.4rem; align-items: center; }
+.ltext { flex: 1; min-width: 0; font-family: var(--serif); font-size: 1.05rem; padding: 0.25rem 0.4rem; }
+.sbox.ok { outline: 2px solid rgba(46, 158, 91, 0.8); }
+.sbox.kmargin, .sbox.kgloss { outline: 2px solid rgba(197, 138, 26, 0.9); }
+.sbox.knoise { outline: 2px dashed rgba(120, 120, 120, 0.9); }

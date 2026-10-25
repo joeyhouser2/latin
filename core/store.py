@@ -92,6 +92,10 @@ class Store:
             # The citation behind a translation_status claim ("English
             # translation listed: King 1987 ..."), so it can be checked.
             self.conn.execute("ALTER TABLE documents ADD COLUMN translation_evidence TEXT")
+        if "mt_confidence" not in doc_cols:
+            # NULL = not assessed; 'low' = machine translation spot-checked and
+            # found unreliable (see scripts/flag_low_confidence.py).
+            self.conn.execute("ALTER TABLE documents ADD COLUMN mt_confidence TEXT")
 
     # -- write ---------------------------------------------------------------
 

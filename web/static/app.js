@@ -23,7 +23,8 @@ const state = {
   files: { root: 'data', path: '', entries: [], preview: null },
   ocr: { data: null, audit: null, auditing: false, loading: false, path: '', title: '' },
   scan: { docId: null, doc: null, info: null, name: null, page: null, text: '', dirty: false, zoom: 0,
-          lines: null, showBoxes: true, hot: null, analyzing: false },
+          lines: null, showBoxes: true, hot: null, analyzing: false,
+          mode: 'page', ll: null, training: null },
   catalog: { source: 'treatises', query: 'usury', items: [], loading: false,
             identSource: 'mdz', ident: '' },
   jobs: [],
@@ -372,7 +373,8 @@ function translationLine(d) {
                 untranslated: 'running', unknown: '' }[d.translation_status] || '';
   return `<p class="muted" style="margin-top:-0.4rem">
     <span class="badge ${cls}">${esc(labels[d.translation_status] || d.translation_status)}</span>
-    ${d.translation_evidence ? ' ' + esc(d.translation_evidence) : ''}</p>`;
+    ${d.translation_evidence ? ' ' + esc(d.translation_evidence) : ''}
+    ${d.mt_confidence === 'low' ? ' <span class="badge queued" title="Spot-checked: the machine translation mistranslates technical terms and names; treat it as a rough gloss.">low-confidence MT</span>' : ''}</p>`;
 }
 
 async function loadMoreSegments() {
@@ -935,7 +937,7 @@ async function go(view) {
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-view],[data-open],[data-page],[data-cd],[data-peek],' +
-    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-ocr-ingest],[data-scan-open],[data-scan-step],[data-scan-save],[data-scan-revert],[data-scan-zoom],[data-scan-reingest],[data-scan-analyze],[data-scan-line],[data-audit-run],[data-joblog],' +
+    '[data-root],[data-theme],[data-cat-go],[data-ingest],[data-ingest-all],[data-ingest-ident],[data-ocr-ingest],[data-scan-open],[data-scan-step],[data-scan-save],[data-scan-revert],[data-scan-zoom],[data-scan-reingest],[data-scan-analyze],[data-scan-line],[data-scan-mode],[data-lrow],[data-lines-apply],[data-htr-export],[data-audit-run],[data-joblog],' +
     '[data-joblog-close],[data-cancel],[data-requeue],[data-jobs-refresh],[data-jobs-clear],' +
     '[data-queue-doc],[data-queue-selected],[data-queue-filter],[data-select-page],' +
     '[data-select-none],[data-translate-doc],[data-translate-range],[data-stylize-doc],' +
@@ -1017,6 +1019,10 @@ document.addEventListener('click', async (ev) => {
     if (d.scanReingest !== undefined) return reingestScan();
     if (d.scanAnalyze !== undefined) return analyzeScanPage();
     if (d.scanLine !== undefined) return hotScanLine(parseInt(d.scanLine, 10));
+    if (d.scanMode) return setScanMode(d.scanMode);
+    if (d.linesApply !== undefined) return applyLinesToPage();
+    if (d.htrExport !== undefined) return exportHtrTraining();
+    if (d.lrow !== undefined) return hotLine(parseInt(d.lrow, 10));
     if (d.auditRun !== undefined) return runOcrAudit();
 
     if (d.joblog) {
@@ -1088,6 +1094,14 @@ document.addEventListener('change', async (ev) => {
   if (d.opt) { state.opts[d.opt] = el.value; return; }
   if (d.scanPage !== undefined) return loadScanPage(el.value);
   if (d.scanBoxes !== undefined) { state.scan.showBoxes = el.checked; return drawScanBoxes(); }
+  if (d.lt !== undefined) return saveLine(parseInt(d.lt, 10), { text: el.value, ok: true });
+  if (d.lk !== undefined) return saveLine(parseInt(d.lk, 10), { kind: el.value });
+  if (d.lok !== undefined) return saveLine(parseInt(d.lok, 10), { ok: el.checked });
+});
+
+document.addEventListener('focusin', (ev) => {
+  const d = ev.target.dataset || {};
+  if (d.lt !== undefined) hotLine(parseInt(d.lt, 10), true);
 });
 
 document.addEventListener('input', (ev) => {
@@ -1109,6 +1123,14 @@ document.addEventListener('input', (ev) => {
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Enter') return;
   const d = ev.target.dataset || {};
+  if (d.lt !== undefined) {
+    ev.preventDefault();
+    const i = parseInt(d.lt, 10);
+    saveLine(i, { text: ev.target.value, ok: true });
+    const next = document.querySelector(`[data-lt="${i + 1}"]`);
+    if (next) { next.focus(); next.select(); }
+    return;
+  }
   if (d.catQuery !== undefined) runCatalogSearch();
   if (d.ident !== undefined) queueIngestIdentifier();
   if (d.searchQ !== undefined) { state.search.q = ev.target.value; runSearch(); }
@@ -1210,7 +1232,9 @@ async function loadScanPage(name) {
   s.hot = null;
   s.lines = await api(`/api/scans/${s.docId}/page/${encodeURIComponent(name)}/lines`)
     .catch(() => ({ lines: null }));
+  s.ll = s.mode === 'lines' ? await loadLineTexts() : null;
   render();
+  paintLineHeader();
   const pane = $('#scan-image'); if (pane) pane.scrollTop = 0;
 }
 
@@ -1283,6 +1307,12 @@ function viewScan() {
           <img id="scan-img" src="${img}" alt="page ${i + 1}" onload="drawScanBoxes()">
           <div id="scan-boxes"></div></div></div>
       <div class="scantext">
+        <div class="row tabs">
+          <button class="btn ${s.mode === 'page' ? '' : 'ghost'}" data-scan-mode="page">Page text</button>
+          <button class="btn ${s.mode === 'lines' ? '' : 'ghost'}" data-scan-mode="lines"
+                  title="Correct line by line; verified lines become training data">Lines (training data)</button>
+        </div>
+        ${s.mode === 'lines' ? lineEditor() : `
         <textarea id="scan-text" data-scan-text spellcheck="false" lang="la">${esc(s.text)}</textarea>
         <div class="row">
           <button class="btn" data-scan-save>Save correction</button>
@@ -1291,7 +1321,7 @@ function viewScan() {
           <span class="muted">Ctrl+S saves · Alt+←/→ changes page</span>
         </div>
         ${checkList()}
-        ${raw}
+        ${raw}`}
       </div>
     </div>`;
 }
@@ -1321,6 +1351,21 @@ function drawScanBoxes() {
   if (!img || !layer) return;
   layer.innerHTML = '';
   const L = state.scan.lines;
+  if (state.scan.mode === 'lines') {
+    const LL = state.scan.ll;
+    if (!LL || !LL.lines || !img.naturalWidth) return;
+    const W = img.naturalWidth, H = img.naturalHeight;
+    LL.lines.forEach((ln, i) => {
+      const cls = state.scan.hot === i ? 'hot' : ln.kind !== 'text' ? 'k' + ln.kind : ln.ok ? 'ok' : '';
+      if (!cls) return;
+      const d = document.createElement('div');
+      d.className = `sbox ${cls}`;
+      d.style.cssText = `left:${ln.b[0] / W * 100}%;top:${ln.b[1] / H * 100}%;` +
+        `width:${(ln.b[2] - ln.b[0]) / W * 100}%;height:${(ln.b[3] - ln.b[1]) / H * 100}%`;
+      layer.appendChild(d);
+    });
+    return;
+  }
   if (!L || !L.lines || !state.scan.showBoxes || !img.naturalWidth) return;
   const W = img.naturalWidth, H = img.naturalHeight;
   const box = (b, cls) => {
@@ -1348,13 +1393,133 @@ function hotScanLine(i) {
     pane.scrollTo({ top: Math.max(0, ln.b[1] / img.naturalHeight * img.clientHeight - 80), behavior: 'smooth' });
 }
 
+// ---- line editor: correct and verify one line at a time; verified lines are training data ----
+const LINE_KINDS = [['text', 'text'], ['margin', 'margin note'], ['gloss', 'interlinear gloss'], ['noise', 'not text']];
+
+async function loadLineTexts() {
+  const s = state.scan;
+  try {
+    return await api(`/api/scans/${s.docId}/page/${encodeURIComponent(s.name)}/linetext`);
+  } catch (e) { return { lines: null }; }
+}
+
+async function setScanMode(mode) {
+  const s = state.scan;
+  if (s.dirty) await saveScanPage(true);
+  s.mode = mode;
+  s.hot = null;
+  if (mode === 'lines') {
+    s.ll = await loadLineTexts();
+    api('/api/training/htr').then(t => { s.training = t; paintLineHeader(); }).catch(() => {});
+  }
+  render();
+  paintLineHeader();
+}
+
+function lineEditor() {
+  const s = state.scan, L = s.ll;
+  if (!L || !L.lines) {
+    return `<div class="row"><button class="btn" data-scan-analyze ${s.analyzing ? 'disabled' : ''}>
+        ${s.analyzing ? 'Reading lines…' : 'Segment this page into lines'}</button>
+      <span class="muted">Needed once per page: the model reads it again and records each line's box
+        (a few seconds; handwriting needs a free GPU).</span></div>`;
+  }
+  const kinds = k => LINE_KINDS.map(([v, l]) => `<option value="${v}" ${v === k ? 'selected' : ''}>${l}</option>`).join('');
+  const rows = L.lines.map(x => `
+    <div class="lrow ${x.ok ? 'ok' : ''} ${x.kind !== 'text' ? 'kind-' + x.kind : ''} ${s.hot === x.i ? 'hot' : ''}" data-lrow="${x.i}">
+      <img loading="lazy" alt="line ${x.i + 1}" class="limg"
+           src="/api/scans/${s.docId}/page/${encodeURIComponent(s.name)}/linetext/${x.i}/image">
+      <div class="lctl">
+        <input type="text" class="ltext" data-lt="${x.i}" value="${esc(x.t)}" spellcheck="false" lang="${s.doc.language === 'grc' ? 'grc' : 'la'}"
+               title="Enter = correct as shown, go to next line">
+        <select data-lk="${x.i}" title="What kind of line is this?">${kinds(x.kind)}</select>
+        <label class="inline" title="Mark as checked against the image"><input type="checkbox" data-lok="${x.i}" ${x.ok ? 'checked' : ''}> ✓</label>
+      </div>
+    </div>`).join('');
+  return `<div class="lineeditor">
+      <div class="row"><span id="line-count"></span>
+        <button class="btn ghost" data-lines-apply title="Replace the page text with these lines (lines marked 'not text' are left out)">Use as page text</button>
+        <button class="btn" data-htr-export title="Write verified lines as a Kraken training set">Export training set</button></div>
+      <div id="line-train" class="muted"></div>
+      <div class="muted">Look at each line image and fix the text. <b>Enter</b> confirms a line as correct and moves
+        on. Mark margin notes, glosses and neumes/ornament with the menu. Everything you confirm or edit
+        is exported as training data.</div>
+      <div class="lrows">${rows}</div>
+    </div>`;
+}
+
+function paintLineHeader() {
+  const s = state.scan, L = s.ll;
+  const c = $('#line-count');
+  if (c && L && L.lines)
+    c.innerHTML = `<b>${L.verified}</b> of ${L.lines.length} lines verified · <b>${L.edited}</b> edited`;
+  const t = $('#line-train'), tr = s.training;
+  if (t && tr) {
+    const last = tr.exports && tr.exports[0];
+    t.textContent = `All documents: ${num(tr.lines)} verified lines on ${num(tr.pages)} pages` +
+      (last ? ` · last export ${last.name}: ${last.lines} lines (${last.val_lines} validation)` : '');
+  }
+}
+
+async function saveLine(i, patch) {
+  const s = state.scan;
+  try {
+    const out = await api(`/api/scans/${s.docId}/page/${encodeURIComponent(s.name)}/linetext/${i}`,
+                          { method: 'PUT', body: patch });
+    s.ll = out;
+    const x = out.lines[i], row = document.querySelector(`[data-lrow="${i}"]`);
+    if (row && x) {
+      row.classList.toggle('ok', x.ok);
+      LINE_KINDS.forEach(([k]) => row.classList.toggle('kind-' + k, x.kind === k && k !== 'text'));
+      const cb = row.querySelector('[data-lok]'); if (cb) cb.checked = x.ok;
+    }
+    paintLineHeader();
+    drawScanBoxes();
+    api('/api/training/htr').then(t => { s.training = t; paintLineHeader(); }).catch(() => {});
+  } catch (e) { toast(e.message, true); }
+}
+
+function hotLine(i, scrollRow) {
+  const s = state.scan;
+  if (s.hot === i && !scrollRow) return;
+  s.hot = i;
+  document.querySelectorAll('.lrow').forEach(el =>
+    el.classList.toggle('hot', parseInt(el.dataset.lrow, 10) === i));
+  drawScanBoxes();
+  const img = $('#scan-img'), pane = $('#scan-image'), ln = s.ll && s.ll.lines && s.ll.lines[i];
+  if (ln && img && pane && img.naturalHeight)
+    pane.scrollTo({ top: Math.max(0, ln.b[1] / img.naturalHeight * img.clientHeight - 120), behavior: 'smooth' });
+}
+
+async function applyLinesToPage() {
+  const s = state.scan;
+  try {
+    await api(`/api/scans/${s.docId}/page/${encodeURIComponent(s.name)}/linetext/apply`, { method: 'POST' });
+    toast('Page text rebuilt from the lines.');
+    await loadScanPage(s.name);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function exportHtrTraining() {
+  const s = state.scan;
+  try {
+    const out = await api('/api/training/htr/export',
+                          { method: 'POST', body: { language: s.doc.language === 'grc' ? 'grc' : 'la' } });
+    toast(`Exported ${out.lines} lines (${out.train_lines} train / ${out.val_lines} validation) to ${out.dir}`);
+    s.training = await api('/api/training/htr');
+    paintLineHeader();
+  } catch (e) { toast(e.message, true); }
+}
+
 async function analyzeScanPage() {
   const s = state.scan;
   s.analyzing = true; render();
   try {
     s.lines = await api(`/api/scans/${s.docId}/page/${encodeURIComponent(s.name)}/analyze`, { method: 'POST' });
+    if (s.mode === 'lines') s.ll = await loadLineTexts();
   } catch (e) { toast(e.message, true); }
   s.analyzing = false; render();
+  paintLineHeader();
 }
 
 async function reingestScan() {

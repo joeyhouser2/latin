@@ -236,6 +236,8 @@ def _doc_dict(row: sqlite3.Row, counts: Dict[str, int]) -> Dict[str, Any]:
         "translation_status": row["translation_status"],
         "translation_evidence": (row["translation_evidence"]
                                  if "translation_evidence" in row.keys() else None),
+        "mt_confidence": (row["mt_confidence"]
+                          if "mt_confidence" in row.keys() else None),
         "segments": n, "translated": tr, "styled": counts.get("styled", 0),
         "percent": (100.0 * tr / n) if n else 0.0,
     }

@@ -259,3 +259,7 @@ data/raw/**/page*.png
 data/raw/pdf_*/
 data/raw/_*
 data/ui_smoke/
+
+# printable worksheets and exported training sets (derived from scans)
+data/worksheets/
+data/training/htr/

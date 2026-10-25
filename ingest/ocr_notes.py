@@ -112,13 +112,15 @@ GAPS: List[Dict[str, Any]] = [
     },
     {
         "id": "no-correction-ui", "severity": "todo",
-        "title": "Corrections are page-level and not yet exported as training data",
-        "detail": ("The scan viewer saves whole-page corrections (corrections.json beside the images) and a "
-                   "re-ingest applies them. There is no line-level editing and no export of image/text "
-                   "pairs, which is what fine-tuning for uncial needs."),
-        "next": ("Line-level correction (segment lines, edit each) and a `ketos`-ready export of corrected pages. "
-                 "Then measure the doubtful-word flags against corrected pages, and try a vision model "
-                 "on flagged lines only."),
+        "title": "Line-level ground truth exists but nothing trains on it yet",
+        "detail": ("The scan viewer's Lines tab corrects and verifies one line at a time "
+                   "(line_corrections.json beside the images) and `python -m training.htr_export` "
+                   "writes a Kraken `path`-format set (line PNG + .gt.txt, split by page, plus layout "
+                   "labels for margin/gloss/noise lines). No fine-tune job is queued from the UI yet, "
+                   "and lines cached before outlines were recorded export as box crops."),
+        "next": ("Label pages, export, run the printed `ketos train` command against the nearest base model, "
+                 "and compare validation error on held-out pages. Then add a queue job for it, and use the "
+                 "margin/gloss labels to train a region classifier."),
     },
 ]
 

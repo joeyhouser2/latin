@@ -23,7 +23,8 @@ import time
 def line_detail(r) -> dict:
     """Per-line and per-word confidence and boxes (image pixels) from one recognised line.
 
-    Line: {"t": text, "c": mean char confidence, "b": [x0,y0,x1,y1], "w": [words]};
+    Line: {"t": text, "c": mean char confidence, "b": [x0,y0,x1,y1], "p": [[x,y],...],
+    "w": [words]};
     word: {"t": word, "c": lowest char confidence in it, "b": [x0,y0,x1,y1]}.
     """
     text = r.prediction
@@ -32,6 +33,12 @@ def line_detail(r) -> dict:
     ys = [p[1] for p in r.boundary]
     box = [min(xs), min(ys), max(xs), max(ys)]
     out = {"t": text, "c": round(sum(conf) / len(conf), 3) if conf else 0.0, "b": box, "w": []}
+    # the line's outline (image pixels), thinned: lets training crops blank neighbouring lines
+    poly = [[int(p[0]), int(p[1])] for p in r.boundary]
+    if len(poly) > 48:
+        poly = poly[::-(-len(poly) // 48)]
+    if len(poly) >= 3:
+        out["p"] = poly
     cuts = list(r.cuts)
     if len(cuts) != len(text) or len(conf) != len(text):
         return out                                   # no per-character geometry: line level only

@@ -16,6 +16,7 @@ therefore loads its machinery lazily, in the background, on the first query.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import threading
@@ -25,7 +26,7 @@ from typing import Any, Dict, List, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -177,6 +178,78 @@ def api_scan_analyze(doc_id: int, name: str) -> Dict[str, Any]:
     if out is None:
         raise HTTPException(404, "no such page")
     return out
+
+
+class LineEdit(BaseModel):
+    text: Optional[str] = None
+    kind: Optional[str] = None
+    ok: Optional[bool] = None
+
+
+@app.get("/api/scans/{doc_id}/page/{name}/linetext")
+def api_line_texts(doc_id: int, name: str) -> Dict[str, Any]:
+    """Every line of the page with corrections merged (``lines`` is null before analysis)."""
+    return scans.line_texts(_doc_source(doc_id), name) or {"lines": None}
+
+
+@app.put("/api/scans/{doc_id}/page/{name}/linetext/{i}")
+def api_line_save(doc_id: int, name: str, i: int, body: LineEdit) -> Dict[str, Any]:
+    doc = view.document(doc_id) or {}
+    try:
+        out = scans.line_save(doc.get("source"), name, i, body.text, body.kind, body.ok,
+                              doc.get("language") or "la")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if out is None:
+        raise HTTPException(404, "no such line (analyse the page first)")
+    return out
+
+
+@app.get("/api/scans/{doc_id}/page/{name}/linetext/{i}/image")
+def api_line_image(doc_id: int, name: str, i: int) -> Response:
+    png = scans.line_image(_doc_source(doc_id), name, i)
+    if png is None:
+        raise HTTPException(404, "no such line")
+    return Response(png, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+
+
+@app.post("/api/scans/{doc_id}/page/{name}/linetext/apply")
+def api_lines_to_page(doc_id: int, name: str) -> Dict[str, Any]:
+    """Replace the page's text with its (corrected) lines, noise lines left out."""
+    out = scans.lines_to_page(_doc_source(doc_id), name)
+    if out is None:
+        raise HTTPException(404, "no line detail for this page (analyse it first)")
+    return out
+
+
+@app.get("/api/training/htr")
+def api_htr_training() -> Dict[str, Any]:
+    """How much hand-verified line ground truth exists (and the last exports)."""
+    from training import htr_export
+    sets = []
+    if htr_export.OUT_ROOT.is_dir():
+        for m in sorted(htr_export.OUT_ROOT.glob("*/manifest.json"), reverse=True)[:5]:
+            try:
+                d = json.loads(m.read_text(encoding="utf-8"))
+                sets.append({k: d.get(k) for k in ("name", "lines", "train_lines", "val_lines",
+                                                   "pages", "created", "language")} | {"dir": str(m.parent)})
+            except (OSError, ValueError):
+                pass
+    return {**htr_export.stats(), "exports": sets}
+
+
+class HtrExport(BaseModel):
+    language: str = "all"
+    name: Optional[str] = None
+
+
+@app.post("/api/training/htr/export")
+def api_htr_export(body: HtrExport) -> Dict[str, Any]:
+    from training import htr_export
+    out = htr_export.export(body.name, language=body.language, log=lambda m: None)
+    if not out["lines"]:
+        raise HTTPException(400, "no verified or corrected lines yet to export")
+    return {k: v for k, v in out.items() if k != "alphabet"}
 
 
 @app.get("/api/scans/{doc_id}/image/{name}")
