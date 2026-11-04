@@ -51,6 +51,7 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from core import interest                                           # noqa: E402
 from core.local_llm import OllamaClient, OllamaError, PrivateOllama   # noqa: E402
 from core.summaries import SummaryStore                            # noqa: E402
 
@@ -318,10 +319,22 @@ def summarize_document(client: OllamaClient, store: SummaryStore, loaded: Dict[s
                                      SCHEMA, **llm), 12)
         progress.tick(doc_id, title, "document")
 
-    store.add(doc_id=doc_id, level="document", summary=out["summary"], topics=out["topics"],
-              part_count=len(chunks), seg_offset_first=0,
-              seg_offset_last=max(0, loaded["total"] - 1), **common)
+    sid = store.add(doc_id=doc_id, level="document", summary=out["summary"],
+                    topics=out["topics"], part_count=len(chunks), seg_offset_first=0,
+                    seg_offset_last=max(0, loaded["total"] - 1), **common)
     store.prune_stale(doc_id, loaded["translated"], args.model, args.source)
+
+    # One more short prompt, so the Summaries tab can sort the new work by
+    # interest straight away. A failure here costs only the rating: the
+    # summary is saved, and scripts/rate_interest.py picks the work up later.
+    try:
+        work = interest.describe(title, doc["author"], doc["language"], doc["century"],
+                                 doc["translation_status"])
+        store.set_interest(doc_id, sid, interest.rate(client, args.model, work,
+                                                      out["summary"], out["topics"]),
+                           args.model)
+    except OllamaError as exc:
+        print(f"  [{doc_id}] interest rating failed ({exc}); summary kept", flush=True)
 
     if embed_ok:
         rows = store.conn.execute(

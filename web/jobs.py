@@ -102,7 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, not_before, id);
 # so one regex drives the progress bar for all of them.
 _PROGRESS_RE = re.compile(r"overall\s+([\d,]+)\s*/\s*([\d,]+)")
 # The banner printed before any work: "=== Translate pending: 12 docs, 98,765 segments ==="
-_TOTAL_RE = re.compile(r"([\d,]+)\s+(?:segments|chunks)")
+_TOTAL_RE = re.compile(r"([\d,]+)\s+(?:segments|chunks|works)")
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +263,15 @@ def _summarize_argv(p: Dict[str, Any]) -> List[str]:
     return argv
 
 
+def _rate_argv(p: Dict[str, Any]) -> List[str]:
+    argv = [sys.executable, "-u", "scripts/rate_interest.py"]
+    for doc_id in p.get("doc_ids") or []:
+        argv.extend(["--doc-id", str(int(doc_id))])
+    _flag(argv, "--model", p.get("model"))
+    _flag(argv, "--force", p.get("force"))
+    return argv
+
+
 @dataclass(frozen=True)
 class KindSpec:
     build: Callable[[Dict[str, Any]], List[str]]
@@ -279,6 +288,9 @@ JOB_KINDS: Dict[str, KindSpec] = {
     "reindex":   KindSpec(_reindex_argv,   "Rebuild the FAISS index", True, True),
     # Reads corpus.db, writes data/summaries.db: free to run beside a translation.
     "summarize": KindSpec(_summarize_argv, "Summarize translated documents (local LLM)",
+                          False, True),
+    # Reads and writes only data/summaries.db.
+    "rate":      KindSpec(_rate_argv, "Rate summarized works for interest (local LLM)",
                           False, True),
 }
 
@@ -882,6 +894,11 @@ def _describe(kind: str, params: Dict[str, Any]) -> str:
                  + (f" [OCR: {ocr}]" if ocr and ocr != "auto" else "")
                  + (f" pp.{params['pages']}" if params.get("pages") else ""))
         return f"Ingest {params.get('source')}: {what[:60]}{extra}"
+    if kind == "rate":
+        ids = params.get("doc_ids") or []
+        scope = (f"{len(ids)} docs" if ids else
+                 "all summarized works" if params.get("force") else "unrated works")
+        return f"Rate interest: {scope}" + (f" ({params['model']})" if params.get("model") else "")
     spec = JOB_KINDS.get(kind)
     return spec.description if spec else kind
 

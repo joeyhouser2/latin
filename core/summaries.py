@@ -26,6 +26,7 @@ so.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -36,7 +37,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = REPO_ROOT / "data" / "summaries.db"
+# LATIN_SUMMARIES_DB: point the web app at a copy (testing without the live file).
+DEFAULT_DB = Path(os.environ.get("LATIN_SUMMARIES_DB") or REPO_ROOT / "data" / "summaries.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS summaries (
@@ -66,7 +68,25 @@ CREATE VIRTUAL TABLE IF NOT EXISTS summaries_fts USING fts5(
     summary, topics, title, author,
     tokenize = 'porter unicode61 remove_diacritics 2'
 );
+
+-- How interesting a work's document summary makes it look (core/interest.py).
+-- Keyed to the summary it rated: once a document is re-summarized the old
+-- rating no longer joins and the work counts as unrated again.
+CREATE TABLE IF NOT EXISTS interest (
+    doc_id     INTEGER PRIMARY KEY,
+    summary_id INTEGER NOT NULL,
+    score      REAL    NOT NULL,      -- 1.0-10.0, computed from the axes
+    subject INTEGER, story INTEGER, history INTEGER, neglect INTEGER,
+    garbled    INTEGER NOT NULL DEFAULT 0,
+    hook       TEXT,
+    model      TEXT    NOT NULL,
+    rated_at   TEXT    NOT NULL
+);
 """
+
+# Browse orders for the Summaries tab. "distinct" is computed, not stored.
+SORTS = ("interest", "distinct", "recent", "title")
+DISTINCT_K = 10     # neighbours averaged for the distinctiveness score
 
 # Highlight sentinels for FTS5 snippet(): control characters that cannot occur
 # in summary text, so the UI can HTML-escape everything and only then turn
@@ -102,6 +122,7 @@ class SummaryStore:
         # count changes. A few thousand 768-d vectors is a few MB: brute-force
         # cosine in numpy is faster than any index at this size.
         self._vec_cache: Dict[str, Tuple[int, np.ndarray, np.ndarray, np.ndarray]] = {}
+        self._distinct_cache: Dict[str, Tuple[int, Dict[int, Tuple[float, int]]]] = {}
 
     # -- writing (summarize job) --------------------------------------------
 
@@ -162,6 +183,7 @@ class SummaryStore:
     def clear_doc(self, doc_id: int) -> int:
         with self._lock:
             n = self._delete_where("doc_id=?", (doc_id,))
+            self.conn.execute("DELETE FROM interest WHERE doc_id=?", (doc_id,))
             self.conn.commit()
             return n
 
@@ -179,6 +201,35 @@ class SummaryStore:
                 "UPDATE summaries SET embed_model=?, embedding=? WHERE id=?",
                 [(embed_model, _to_blob(v), sid) for sid, v in pairs])
             self.conn.commit()
+
+    def set_interest(self, doc_id: int, summary_id: int, rating: Dict[str, Any],
+                     model: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO interest (doc_id, summary_id, score, subject,
+                       story, history, neglect, garbled, hook, model, rated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (doc_id, summary_id, rating["score"], rating["subject"], rating["story"],
+                 rating["history"], rating["neglect"], int(rating["garbled"]),
+                 rating["hook"], model, _now()))
+            self.conn.commit()
+
+    def documents_to_rate(self, force: bool = False,
+                          doc_ids: Sequence[int] = ()) -> List[sqlite3.Row]:
+        """Document summaries with no current interest rating (all of them with force)."""
+        where = ["s.level='document'"]
+        args: List[Any] = []
+        if not force:
+            where.append("(i.summary_id IS NULL OR i.summary_id <> s.id)")
+        if doc_ids:
+            where.append(f"s.doc_id IN ({','.join('?' * len(doc_ids))})")
+            args.extend(doc_ids)
+        with self._lock:
+            return self.conn.execute(
+                f"""SELECT s.id, s.doc_id, s.summary, s.topics, f.title, f.author
+                    FROM summaries s JOIN summaries_fts f ON f.rowid = s.id
+                    LEFT JOIN interest i ON i.doc_id = s.doc_id
+                    WHERE {' AND '.join(where)} ORDER BY s.doc_id""", args).fetchall()
 
     def document_row(self, doc_id: int) -> Optional[sqlite3.Row]:
         with self._lock:
@@ -207,9 +258,12 @@ class SummaryStore:
             models = [x[0] for x in self.conn.execute(
                 "SELECT embed_model FROM summaries WHERE embed_model IS NOT NULL "
                 "GROUP BY embed_model ORDER BY COUNT(*) DESC")]
+            rated = self.conn.execute(
+                """SELECT COUNT(*) FROM interest i JOIN summaries s
+                   ON s.id = i.summary_id AND s.level='document'""").fetchone()[0]
         return {"docs": r["docs"] or 0, "documents": r["documents"] or 0,
                 "parts": r["parts"] or 0, "embedded": r["embedded"] or 0,
-                "embed_model": models[0] if models else None}
+                "rated": rated, "embed_model": models[0] if models else None}
 
     def summarized_doc_ids(self) -> Dict[int, int]:
         """doc_id -> translated_count at the time its document summary was written."""
@@ -217,19 +271,104 @@ class SummaryStore:
             return {r[0]: r[1] for r in self.conn.execute(
                 "SELECT doc_id, translated_count FROM summaries WHERE level='document'")}
 
-    def recent(self, limit: int = 30) -> List[Dict[str, Any]]:
+    def browse(self, sort: str = "recent", limit: int = 30, offset: int = 0,
+               embed_model: Optional[str] = None) -> Dict[str, Any]:
+        """Whole-work summaries in one of SORTS, a page at a time."""
+        order = {"interest": "i.score IS NULL, i.score DESC, s.created_at DESC",
+                 "title": "f.title COLLATE NOCASE",
+                 }.get(sort, "s.created_at DESC")
+        select = """SELECT s.*, f.title, f.author FROM summaries s
+                    JOIN summaries_fts f ON f.rowid = s.id"""
         with self._lock:
-            rows = self.conn.execute(
-                """SELECT s.*, f.title, f.author FROM summaries s
-                   JOIN summaries_fts f ON f.rowid = s.id
-                   WHERE s.level='document' ORDER BY s.created_at DESC LIMIT ?""",
-                (limit,)).fetchall()
-        return [_row_dict(r) for r in rows]
+            total = self.conn.execute(
+                "SELECT COUNT(*) FROM summaries WHERE level='document'").fetchone()[0]
+            if sort == "distinct":
+                ranks = self._distinct(embed_model)
+                ids = sorted((r[0] for r in self.conn.execute(
+                                 "SELECT id FROM summaries WHERE level='document'")),
+                             key=lambda sid: -ranks.get(sid, (-1.0, 0))[0])[offset:offset + limit]
+                rows = {r["id"]: r for r in self.conn.execute(
+                    f"{select} WHERE s.id IN ({','.join('?' * len(ids))})", ids)}
+                page = [rows[i] for i in ids if i in rows]
+            else:
+                page = self.conn.execute(
+                    f"""{select}
+                        LEFT JOIN interest i ON i.doc_id = s.doc_id AND i.summary_id = s.id
+                        WHERE s.level='document' ORDER BY {order} LIMIT ? OFFSET ?""",
+                    (limit, offset)).fetchall()
+        items = self._annotate([_row_dict(r) for r in page], embed_model)
+        return {"items": items, "total": total}
+
+    def _annotate(self, items: List[Dict[str, Any]],
+                  embed_model: Optional[str]) -> List[Dict[str, Any]]:
+        """Attach each item's work-level interest rating and distinctiveness.
+
+        A part inherits its work's: the rating is of the work, and a part of a
+        dull volume is no more interesting for matching a query."""
+        doc_ids = sorted({d["doc_id"] for d in items})
+        if not doc_ids:
+            return items
+        with self._lock:
+            rated = {r["doc_id"]: dict(r) for r in self.conn.execute(
+                f"""SELECT i.doc_id, i.score, i.subject, i.story, i.history, i.neglect,
+                           i.garbled, i.hook, s.id AS work_id
+                    FROM interest i JOIN summaries s
+                      ON s.id = i.summary_id AND s.level='document'
+                    WHERE i.doc_id IN ({','.join('?' * len(doc_ids))})""", doc_ids)}
+            works = {r[0]: r[1] for r in self.conn.execute(
+                f"""SELECT doc_id, id FROM summaries WHERE level='document'
+                    AND doc_id IN ({','.join('?' * len(doc_ids))})""", doc_ids)}
+            ranks = self._distinct(embed_model)
+        for d in items:
+            r = rated.get(d["doc_id"])
+            d["interest"] = ({k: r[k] for k in ("score", "subject", "story", "history",
+                                                 "neglect", "hook")} | {"garbled": bool(r["garbled"])}
+                             if r else None)
+            # Percentile: "more distinctive than N% of the library's works".
+            d["distinct_pct"] = ranks.get(works.get(d["doc_id"]), (None, None))[1]
+        return items
+
+    def _distinct(self, embed_model: Optional[str]) -> Dict[int, Tuple[float, int]]:
+        """Work summary id -> (distinctiveness, percentile 0-100). Caller holds the lock.
+
+        Distinctiveness is 1 minus the mean cosine similarity to the work's
+        DISTINCT_K nearest other works: a forty-first hymn volume sits close to
+        forty siblings, a travel account to India close to nothing. It measures
+        "unusual for this library", which is not the same as interesting --
+        Cicero is an outlier here too -- so it is a separate sort, not a factor
+        in the interest score.
+        """
+        if not embed_model:
+            return {}
+        n = self.conn.execute(
+            "SELECT COUNT(*) FROM summaries WHERE level='document' AND embed_model=?",
+            (embed_model,)).fetchone()[0]
+        cached = self._distinct_cache.get(embed_model)
+        if cached and cached[0] == n:
+            return cached[1]
+        rows = self.conn.execute(
+            "SELECT id, embedding FROM summaries WHERE level='document' AND embed_model=?",
+            (embed_model,)).fetchall()
+        out: Dict[int, Tuple[float, int]] = {}
+        if len(rows) > DISTINCT_K:
+            mat = np.vstack([np.frombuffer(r[1], dtype=np.float32) for r in rows])
+            sims = mat @ mat.T
+            np.fill_diagonal(sims, -np.inf)
+            near = -np.sort(-sims, axis=1)[:, :DISTINCT_K].mean(axis=1)
+            dist = 1.0 - near
+            pct = (np.argsort(np.argsort(dist)) * 100) // len(dist)
+            out = {int(r[0]): (float(dist[i]), int(pct[i])) for i, r in enumerate(rows)}
+        self._distinct_cache[embed_model] = (n, out)
+        return out
 
     def search(self, q: str, *, level: str = "", limit: int = 20,
                query_vec: Optional[Sequence[float]] = None,
-               embed_model: Optional[str] = None) -> Dict[str, Any]:
-        """Hybrid search. Returns {"mode": "hybrid"|"keyword", "items": [...]}."""
+               embed_model: Optional[str] = None, sort: str = "") -> Dict[str, Any]:
+        """Hybrid search. Returns {"mode": "hybrid"|"keyword", "items": [...]}.
+
+        ``sort`` (one of SORTS) reorders the top ``limit`` matches; empty keeps
+        relevance order. Reordering only the matches, not the whole pool, keeps
+        a weak match from climbing to the top just for being well rated."""
         pool = max(limit * 3, 50)
         # "hybrid" means meaning-search *ran*, not that it found something: a
         # query whose closest summaries all fall under the floor must not be
@@ -266,6 +405,17 @@ class SummaryStore:
                           else "keyword" if sid in snippets else "meaning")
             d["snippet"] = snippets.get(sid)
             items.append(d)
+        items = self._annotate(items, embed_model)
+        # Stable sorts (reverse=True too), so ties keep their relevance order.
+        if sort == "interest":
+            items.sort(key=lambda d: (d["interest"] or {}).get("score", 0), reverse=True)
+        elif sort == "distinct":
+            items.sort(key=lambda d: d["distinct_pct"] if d["distinct_pct"] is not None else -1,
+                       reverse=True)
+        elif sort == "recent":
+            items.sort(key=lambda d: d["created_at"], reverse=True)
+        elif sort == "title":
+            items.sort(key=lambda d: (d["title"] or "").lower())
         return {"mode": mode, "items": items}
 
     def _keyword(self, q: str, level: str, limit: int) -> List[Tuple[int, str]]:

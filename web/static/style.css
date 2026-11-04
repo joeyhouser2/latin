@@ -118,6 +118,10 @@ td.title .sub { color: var(--muted); font-size: 0.76rem; }
 .badge.done { color: var(--ok); border-color: var(--ok); }
 .badge.failed, .badge.interrupted { color: var(--bad); border-color: var(--bad); }
 .badge.cancelled { color: var(--muted); }
+.badge.interest { color: var(--accent); border-color: var(--accent); margin-right: 0.3rem; cursor: help; }
+
+/* the interest rating's one-line hook, above a summary */
+.hook { margin: 0.35rem 0 0; font-style: italic; }
 
 /* ---- reader ---- */
 .reader { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }

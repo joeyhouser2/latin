@@ -30,7 +30,8 @@ const state = {
   jobs: [],
   jobLog: null,         // { id, text }
   search: { q: '', items: [], message: '' },
-  summ: { q: '', level: '', items: [], mode: '', note: '', stats: null, loading: false },
+  summ: { q: '', level: '', sort: '', items: [], total: 0, mode: '', note: '', stats: null,
+          loading: false },
   docSumm: null,        // open document's summaries: { document, parts }
   readerOffset: 0,      // reader can open mid-document (a summary part's start)
   gpus: [],
@@ -806,20 +807,36 @@ function viewSummaries() {
       ? `Part ${h.part_index + 1} of ${h.part_count} · segments ${num(h.seg_offset_first + 1)}–${num(h.seg_offset_last + 1)}`
       : 'Whole work';
     const body = h.snippet ? hl(h.snippet, s.hl) : esc(h.summary);
+    const r = h.interest;
+    const star = r ? `<span class="badge interest" title="${esc(
+        `subject ${r.subject} · story ${r.story} · history ${r.history} · neglect ${r.neglect} (each 1–5)`
+        + (r.garbled ? ' · capped: text too garbled to read yet' : ''))}">★ ${r.score.toFixed(1)}</span>` : '';
+    const distinct = h.distinct_pct != null
+      ? ` · <span title="how unlike the rest of the library its summary is">more distinctive than ${h.distinct_pct}%</span>` : '';
     return `
       <div class="card">
         <div class="muted" style="font-size:0.78rem">
+          ${star}
           <a data-open-at="${h.doc_id}" data-offset="${h.level === 'part' ? h.seg_offset_first : 0}">
             ${esc(h.author || 'Anon.')} — ${esc(h.title)}</a>
-          · ${where}
+          · ${where}${distinct}
           ${h.match ? ` · <span title="how it matched">${esc(h.match)}</span>` : ''}</div>
+        ${r && r.hook ? `<p class="hook">${esc(r.hook)}</p>` : ''}
         <p style="margin:0.35rem 0">${body}</p>
         <div>${(h.topics || []).map(t => `<span class="chip" data-topic="${esc(t)}">${esc(t)}</span>`).join('')}</div>
       </div>`;
   }).join('');
 
+  const sorts = [['interest', 'most interesting'], ['distinct', 'most distinctive'],
+                 ['recent', 'recently summarized'], ['title', 'title A–Z']];
+  // Browsing has no relevance order; the server picks its default ('interest' once rated).
+  const sortNow = s.sort || (s.q ? '' : s.serverSort);
+  const sortOpts = (s.q ? [['', 'best match'], ...sorts] : sorts).map(([v, l]) =>
+    `<option value="${v}" ${v === sortNow ? 'selected' : ''}>${l}</option>`).join('');
+  const unrated = (st.documents || 0) - (st.rated || 0);
   const modeNote = s.mode === 'hybrid' ? 'keyword + meaning'
-    : s.mode === 'keyword' ? 'keyword only' : s.mode === 'recent' ? 'most recently summarized' : '';
+    : s.mode === 'keyword' ? 'keyword only'
+    : s.mode === 'browse' ? `all ${num(s.total)} works, ${sorts.find(x => x[0] === sortNow)?.[1] || ''} first` : '';
   return `
     <h2>Summaries</h2>
     <p class="muted">A local LLM (Ollama, on whichever GPU isn't translating) reads each translated
@@ -833,23 +850,32 @@ function viewSummaries() {
         <option value="document" ${s.level === 'document' ? 'selected' : ''}>whole works only</option>
         <option value="part" ${s.level === 'part' ? 'selected' : ''}>parts only</option>
       </select>
+      <label class="inline">sort <select data-summ-sort>${sortOpts}</select></label>
       <button class="btn" data-summ-go ${s.loading ? 'disabled' : ''}>${s.loading ? 'searching…' : 'Search'}</button>
       <span class="muted">${num(st.docs)} works summarized · ${num(st.parts)} parts</span>
       <button class="btn ghost" data-summarize-all>Summarize everything translated</button>
+      ${unrated > 0 ? `<button class="btn ghost" data-rate-interest
+          title="One short local-LLM prompt per work: scores subject, story, historical value and neglect, and writes a one-line hook. About 20 works a minute.">
+          Rate ${num(unrated)} unrated for interest</button>` : ''}
     </div>
     ${modeNote ? `<p class="muted">${esc(modeNote)}${s.note ? ' — ' + esc(s.note) : ''}</p>` : ''}
-    ${items || `<p class="muted">${s.q ? 'No matches.' : 'Nothing summarized yet — open a translated document and press Summarize, or summarize everything translated.'}</p>`}`;
+    ${items || `<p class="muted">${s.q ? 'No matches.' : 'Nothing summarized yet — open a translated document and press Summarize, or summarize everything translated.'}</p>`}
+    ${s.mode === 'browse' && s.items.length < s.total
+      ? `<button class="btn ghost" data-summ-more ${s.loading ? 'disabled' : ''}>show more (${num(s.total - s.items.length)} left)</button>` : ''}`;
 }
 
-async function runSummarySearch() {
-  state.summ.loading = true; render();
+/* more=true appends the next page of a browse instead of starting over. */
+async function runSummarySearch(more = false) {
+  const s = state.summ;
+  s.loading = true; render();
   try {
     const data = await api('/api/summaries/search?' + new URLSearchParams(
-      { q: state.summ.q, level: state.summ.level, limit: 30 }));
-    Object.assign(state.summ, { items: data.items, mode: data.mode, note: data.note || '',
-                                stats: data.stats, hl: data.hl });
+      { q: s.q, level: s.level, sort: s.sort, limit: 30, offset: more ? s.items.length : 0 }));
+    Object.assign(s, { items: more ? s.items.concat(data.items) : data.items,
+                       total: data.total || 0, mode: data.mode, note: data.note || '',
+                       serverSort: data.sort, stats: data.stats, hl: data.hl });
   } catch (e) { toast(e.message, true); }
-  state.summ.loading = false; render();
+  s.loading = false; render();
 }
 
 // ---------------------------------------------------------------------------
@@ -943,7 +969,7 @@ document.addEventListener('click', async (ev) => {
     '[data-queue-doc],[data-queue-selected],[data-queue-filter],[data-select-page],' +
     '[data-select-none],[data-translate-doc],[data-translate-range],[data-stylize-doc],' +
     '[data-more],[data-search-go],[data-summarize-doc],[data-summarize-preview],[data-summarize-selected],' +
-    '[data-summarize-all],[data-summ-go],[data-topic],[data-jump],[data-open-at],' +
+    '[data-summarize-all],[data-summ-go],[data-summ-more],[data-rate-interest],[data-topic],[data-jump],[data-open-at],' +
     '[data-regerman-doc],[data-regerman-selected]');
   if (!el) return;
   const d = el.dataset;
@@ -1059,6 +1085,10 @@ document.addEventListener('click', async (ev) => {
       return queueJob('summarize', { all: true, ...jobOpts('summarize') });
     }
     if (d.summGo !== undefined) { state.summ.q = $('[data-summ-q]').value; return runSummarySearch(); }
+    if (d.summMore !== undefined) return runSummarySearch(true);
+    if (d.rateInterest !== undefined)
+      return queueJob('rate', { model: state.opts.summary_model || undefined,
+                                gpu: jobOpts('summarize').gpu });
     if (d.topic) { state.summ.q = d.topic; state.view = 'summaries'; return runSummarySearch(); }
     if (d.jump !== undefined) return openDoc(state.doc.id, '', parseInt(d.jump, 10));
     if (d.openAt) return openDoc(parseInt(d.openAt, 10), '', parseInt(d.offset || '0', 10));
@@ -1091,6 +1121,7 @@ document.addEventListener('change', async (ev) => {
     return render();
   }
   if (d.summLevel !== undefined) { state.summ.level = el.value; return runSummarySearch(); }
+  if (d.summSort !== undefined) { state.summ.sort = el.value; return runSummarySearch(); }
   if (d.identSource !== undefined) { state.catalog.identSource = el.value; return; }
   if (d.opt) { state.opts[d.opt] = el.value; return; }
   if (d.scanPage !== undefined) return loadScanPage(el.value);

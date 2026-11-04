@@ -41,6 +41,7 @@ from web.jobs import JOB_KINDS, JobQueue                     # noqa: E402
 from web.library_view import LibraryView                     # noqa: E402
 from web.scans import Scans                                  # noqa: E402
 from core.summaries import HL_CLOSE, HL_OPEN, SummaryStore   # noqa: E402
+from core.summaries import SORTS as SUMMARY_SORTS            # noqa: E402
 from core.local_llm import OllamaClient                      # noqa: E402
 
 
@@ -560,8 +561,13 @@ def api_discover(req: DiscoverRequest) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 @app.get("/api/summaries/search")
-def api_summary_search(q: str = "", level: str = "", limit: int = Query(20, le=100)) -> Dict[str, Any]:
+def api_summary_search(q: str = "", level: str = "", sort: str = "",
+                       limit: int = Query(20, le=100), offset: int = Query(0, ge=0)) -> Dict[str, Any]:
     """Hybrid keyword + meaning search over document and part summaries.
+
+    With no query, browses whole-work summaries a page at a time in ``sort``
+    order (default: most interesting once any are rated, else most recent).
+    With a query, ``sort`` reorders the matches; empty keeps relevance.
 
     Snippet highlights come back wrapped in control-character sentinels, which
     the client HTML-escapes around before turning into <mark>; see
@@ -569,10 +575,14 @@ def api_summary_search(q: str = "", level: str = "", limit: int = Query(20, le=1
     """
     if level not in ("", "document", "part"):
         raise HTTPException(400, "level must be document, part or empty")
-    if not q.strip():
-        return {"mode": "recent", "items": summaries.recent(limit),
-                "stats": summaries.stats(), "hl": [HL_OPEN, HL_CLOSE]}
+    if sort and sort not in SUMMARY_SORTS:
+        raise HTTPException(400, f"sort must be one of {', '.join(SUMMARY_SORTS)} or empty")
     stats = summaries.stats()
+    if not q.strip():
+        sort = sort or ("interest" if stats["rated"] else "recent")
+        out = summaries.browse(sort, limit=limit, offset=offset, embed_model=stats["embed_model"])
+        return {"mode": "browse", "sort": sort, **out, "offset": offset,
+                "stats": stats, "hl": [HL_OPEN, HL_CLOSE]}
     vec, note = None, ""
     if stats["embed_model"]:
         try:
@@ -580,8 +590,8 @@ def api_summary_search(q: str = "", level: str = "", limit: int = Query(20, le=1
         except Exception as exc:                               # noqa: BLE001
             note = f"meaning search unavailable ({type(exc).__name__}); keyword only"
     out = summaries.search(q, level=level, limit=limit, query_vec=vec,
-                           embed_model=stats["embed_model"])
-    out.update({"stats": stats, "note": note, "hl": [HL_OPEN, HL_CLOSE]})
+                           embed_model=stats["embed_model"], sort=sort)
+    out.update({"sort": sort, "stats": stats, "note": note, "hl": [HL_OPEN, HL_CLOSE]})
     return out
 
 
