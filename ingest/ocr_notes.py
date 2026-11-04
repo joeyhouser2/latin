@@ -21,10 +21,14 @@ GAPS: List[Dict[str, Any]] = [
         "title": "Uncial, rustic capitals and papyrus are unreadable",
         "detail": ("Every installed handwriting model scores ~30% known words on St Gall Cod. Sang. "
                    "226 (uncial on papyrus), against 75-85% on Carolingian and Gothic hands. "
-                   "Tesseract fails too. The pipeline refuses to ingest such output (under 50%)."),
+                   "Tesseract fails too. The pipeline refuses to ingest such output (under 50%). "
+                   "Roman cursive on papyrus is no better: on a clean Ravenna deed (P.Ital. 1 28) "
+                   "CATMuS and Manicule got 0 words of the edition right "
+                   "(docs/papyri-htr-feasibility.md)."),
         "next": ("Fine-tune a model on 20-50 hand-corrected pages of the script (eScriptorium / "
                  "`ketos train`), or transcribe by hand. Late-antique and early-medieval material "
-                 "(5th-8th c.) is mostly in this class."),
+                 "(5th-8th c.) is mostly in this class. For papyri, published editions on "
+                 "papyri.info (`ingest/papyri.py`) give line-by-line ground truth for imaged texts."),
     },
     {
         "id": "translator-quality", "severity": "blocker",

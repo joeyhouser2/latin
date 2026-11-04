@@ -254,6 +254,7 @@ python scripts/ingest.py list          # show available sources
 | **IIIF** (any manifest: Vatican, e-codices, BL, Parker, Heidelberg, Göttingen…; print *and* manuscripts) | `iiif` | manifest URL, `vatlib:Vat.lat.3773`, `ecodices:csg-0390`, `bnf:…`, `bodleian:…` | — |
 | **Capitularia** (Frankish royal capitularies, 507–9th c.) ✓ *verified translation status* | `capitularia` | `BK.139` / `Mordek.12` | `untranslated`, a reign (`pre814`, `ldf` = 814–840, `post840`), `all`, or title words |
 | **CELT** (Hiberno-Latin, Cork) ✓ *verified translation status* | `celt` | `L100003` | `untranslated`, `all`, or title/author words |
+| **papyri.info** (Latin & Greek papyri, tablets, ostraca; DDbDP + DCLP, CC BY) | `papyri` | `ddbdp:<TM>`, `dclp:<TM>`, or an edition id like `chla;10;415` | `latin`, `greek`, or a language code, optionally `:DDbDP` / `:DCLP` (needs `scripts/papyri_index.py`) |
 | **Vernacular classics** (de/fr/it/nl/pl/hu/ru, medieval–Renaissance) | `vernacular` | catalogue key `pl:rej-zywot`, or `ws:<lang>:<Wikisource page>` | a language code or `all` |
 | Local plain text | `file` | `.txt` path | `.txt` files in a directory |
 
@@ -444,6 +445,29 @@ came from secondary literature (a lecture titled *Translations and Adaptations i
 Irish*; unrelated Galen translations). Result: 13 translated, 3 in copyright, **12
 untranslated** — the Irish annals, *Vita Ite*, the hymn *Adelphus adelpha mater*, the
 *Regimen na Sláinte* texts, and others.
+
+### Papyri: `papyri`
+
+Published papyri, wooden tablets and ostraca from papyri.info: about 68,000
+documentary texts (DDbDP) and 15,000 literary ones (DCLP). 805 of them are
+readable Latin, and all 805 are in the corpus. The Latin includes the Ravenna papyri, the Dura-Europos army rosters,
+*Chartae Latinae Antiquiores*, the Vindolanda tablets and the Bu Njem ostraca.
+The website is behind a bot check, so the connector reads the project's own
+GitHub mirror (`papyri/idp.data`, CC BY 3.0). Language is only marked inside
+each file, so discovery needs an index:
+
+```bash
+python scripts/papyri_index.py --buckets DDbDP/69,DDbDP/114   # part of it, minutes
+python scripts/papyri_index.py                                # all ~83,000 files, ~530 MB
+python scripts/ingest.py papyri latin --discover --limit 50   # longest Latin texts first
+```
+
+Editions are rendered as light Leiden text: `[restored]`, `[...]` lost,
+`(expanded)` abbreviations, `⟦deleted⟧`. Words broken across lines are rejoined,
+and lines are grouped into ~200-character segments. Texts with fewer than 40
+letters surviving outside the restorations are skipped. Where to go from here
+with papyrus *images*, and why our HTR models can't read them yet, is in
+`docs/papyri-htr-feasibility.md`.
 
 > **Windows crash, fixed in `core/__init__.py`.** Any HTTPS request made before the
 > embedder first loads used to segfault the process when the embedder then pulled in

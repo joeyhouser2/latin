@@ -470,6 +470,7 @@ const THEMES = {
   celt: ['untranslated', 'all'],
   sutton: ['Filelfo', 'Biondo', 'Salutati', 'Poliziano', 'Pontano', 'Bruni', 'epistolography', 'fetchable'],
   pg_corpus: ['chrysostom', 'genesis', 'psalms', 'all'],
+  papyri: ['latin', 'latin:DCLP', 'greek'],
 };
 const THEME_LABELS = { pre814: 'to 814', ldf: 'Louis the Pious 814–840', post840: 'after 840' };
 

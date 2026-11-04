@@ -25,6 +25,7 @@ data/joblogs/
 data/raw/capitularia/
 data/raw/celt/
 data/raw/vernacular/
+data/raw/papyri/
 # fine-tuned translation checkpoints (downloaded/retrained; never commit)
 models/
 

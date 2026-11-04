@@ -38,6 +38,7 @@ from .vd import VDConnector
 from .iiif import IIIFConnector
 from .europeana import EuropeanaConnector
 from .googlebooks import GoogleBooksConnector
+from .papyri import PapyriConnector
 
 
 _REGISTRY: Dict[str, Callable[[], Connector]] = {
@@ -73,6 +74,7 @@ _REGISTRY: Dict[str, Callable[[], Connector]] = {
     IIIFConnector.name: IIIFConnector,
     EuropeanaConnector.name: EuropeanaConnector,
     GoogleBooksConnector.name: GoogleBooksConnector,
+    PapyriConnector.name: PapyriConnector,
 }
 
 
