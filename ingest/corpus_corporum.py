@@ -27,6 +27,11 @@ from .base import Connector, RawWork
 
 CC = "https://mlat.uzh.ch/php_modules/"
 
+# Elements that start a new line of text; anything else (spans, milestones) is inline.
+BLOCK_TAGS = {"div", "p", "head", "h1", "h2", "h3", "h4", "h5", "h6",
+              "l", "lg", "li", "ul", "ol"}
+MIN_BODY_WORDS = 3
+
 
 def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
@@ -52,6 +57,9 @@ class CorpusCorporumConnector(Connector):
         author = self._first_text(root, "author")
         title = self._first_text(root, "name") or f"Corpus Corporum {idno}"
         prose = self._extract_prose(root)
+        # A server error or an apparatus-only record has no body; don't ingest it.
+        if len(prose.split()) < MIN_BODY_WORDS:
+            raise ValueError(f"Corpus Corporum {idno}: no body text returned")
 
         meta = {
             "title": title,
@@ -60,6 +68,7 @@ class CorpusCorporumConnector(Connector):
             "license": "Corpus Corporum (mlat.uzh.ch); check per-text terms",
             "language_stage": "medieval",
             "has_existing_translation": False,
+            "_page_markers": True,
         }
         meta.update(meta_overrides)
         return meta, [("Text", prose)]
@@ -134,20 +143,41 @@ class CorpusCorporumConnector(Connector):
         return ET.fromstring(resp.content)
 
     def _extract_prose(self, root: ET.Element) -> str:
-        """Concatenate text from <div> elements (the prose); metadata lives elsewhere."""
+        """Return the work's text once, one line per block, in reading order.
+
+        Sections nest (div.text > div.text_section > div.text_section ...), so
+        each piece of text must be emitted by one block only: taking itertext()
+        of every <div> repeats the whole work once per nesting level. Only
+        <response_text> is read. <response_paratext> holds the site's marginalia
+        (page numbers, scripture references), and <response_meta> its catalogue.
+        """
+        body = self._find(root, "response_text")
         chunks: List[str] = []
-        for el in root.iter():
-            if _local(el.tag) == "div":
-                text = " ".join(el.itertext())
-                text = re.sub(r"\s+", " ", text).strip()
-                if text:
-                    chunks.append(text)
-        if not chunks:  # fall back to any <p>/<l> lines
-            for el in root.iter():
-                if _local(el.tag) in ("p", "l"):
-                    t = re.sub(r"\s+", " ", " ".join(el.itertext())).strip()
-                    if t:
-                        chunks.append(t)
+        pending: List[str] = []
+
+        def flush() -> None:
+            text = re.sub(r"\s+", " ", " ".join(pending)).strip()
+            pending.clear()
+            if text:
+                chunks.append(text)
+
+        def walk(el: ET.Element) -> None:
+            is_block = _local(el.tag) in BLOCK_TAGS
+            if is_block:
+                flush()
+            if el.text:
+                pending.append(el.text)
+            for child in el:
+                walk(child)
+                if child.tail:
+                    pending.append(child.tail)
+            if is_block:
+                flush()
+
+        # A failed load puts a bare error message in <response_text>, with no markup.
+        if body is not None and len(body):
+            walk(body)
+            flush()
         return "\n".join(chunks)
 
     @staticmethod
