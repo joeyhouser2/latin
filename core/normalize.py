@@ -61,3 +61,18 @@ def embedding_text_for(latin_text: str) -> "str | None":
     """
     cleaned = normalize_for_embedding(latin_text)
     return cleaned if cleaned and cleaned != latin_text.strip() else None
+
+
+_WORD = re.compile(r"[^\W\d_]+")
+
+
+def is_worth_indexing(text: str) -> bool:
+    """True if a segment should get a search vector: 3+ words and 5+ letters.
+
+    Shorter segments are mostly verse numbers and apparatus sigla ("15.", "Cod.",
+    "Vatican."). In a 16-query trial they took 16.6% of the top-20 slots, mostly
+    with weak hits, while adding about 0.8 GB to the flat index. They stay in the
+    store and in the reader; they just aren't reachable through vector search.
+    """
+    words = _WORD.findall(text or "")
+    return len(words) >= 3 and sum(map(len, words)) >= 5

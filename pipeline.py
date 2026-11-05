@@ -19,7 +19,7 @@ from core.stylizer import Stylizer, LocalLLMStylizer, Seq2SeqStylizer, StyleUnit
 from core.scansion import scan_lines
 from core.segmenter import segment_text
 from ingest.german_detect import is_german
-from core.normalize import embedding_text_for, strip_greek_diacritics
+from core.normalize import embedding_text_for, is_worth_indexing, strip_greek_diacritics
 from core.search import SearchService, SearchHit
 
 
@@ -122,7 +122,8 @@ class Library:
         return doc
 
     def _embed_document(self, doc: Document) -> None:
-        segments = list(doc.iter_segments())
+        segments = [s for s in doc.iter_segments()
+                    if is_worth_indexing(s.text_for_embedding)]
         if not segments:
             return
         embeddings = self.embedder.embed(
@@ -134,7 +135,7 @@ class Library:
         """Backfill embed_text and rebuild the FAISS index from the store.
 
         Run after changing the embedding/normalization logic. Returns the number
-        of segments indexed.
+        of segments indexed, which leaves out those failing is_worth_indexing.
         """
         segments = self.store.iter_all_segments()
         if not segments:
@@ -151,6 +152,10 @@ class Library:
         if updates:
             self.store.set_embed_texts(updates)
             print(f"Backfilled embed_text for {len(updates)} segments")
+
+        total = len(segments)
+        segments = [s for s in segments if is_worth_indexing(s.text_for_embedding)]
+        print(f"Skipping {total - len(segments)} segments too short to index")
 
         self.vectors = VectorStore()
         self.search_service = SearchService(self.store, self.embedder, self.vectors)
