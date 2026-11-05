@@ -75,7 +75,7 @@ My expectation, from memory and unverified, is that the Aristodemus passages are
 - **Not a full view of TLG:** the catalog covers about 2,800 Greek works, against TLG's 10,000 online.
 - **Not checked against PTA, PG Corpus or `corpus.db`:** some listed works may already be available.
 - **Genre labels are rough:** they come from title keywords, and only 36 works got one, so `other` still contains relevant texts.
-- **OCR column:** it was only checked for works with a genre label and an archive.org link. Two of those items returned no file list (`missing`).
+- **OCR column:** it was only checked for works with a genre label and an archive.org link. All 18 of those have OCR text.
 - **Edition links:** each row shows one edition, and for multi-volume sets that may not be the right volume.
 
 ## Running it

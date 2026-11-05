@@ -77,7 +77,7 @@ def read_edition(path):
             creator = full
         if "editor" in role and not editor:
             editor = full
-    urls = [u.text or "" for u in root.iter(MODS + "url")]
+    urls = [clean(u.text) for u in root.iter(MODS + "url")]
     return {
         "uniform": clean("".join(uniform.itertext())) if uniform is not None else "",
         "title": clean("".join(first_title.itertext())) if first_title is not None else "",
