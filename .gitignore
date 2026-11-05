@@ -26,6 +26,9 @@ data/raw/capitularia/
 data/raw/celt/
 data/raw/vernacular/
 data/raw/papyri/
+# quotation-mining downloads and results (scripts/mine_quotations.py)
+data/raw/quotations/
+data/quotations/
 # fine-tuned translation checkpoints (downloaded/retrained; never commit)
 models/
 
