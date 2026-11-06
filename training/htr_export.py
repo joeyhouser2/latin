@@ -84,23 +84,45 @@ def _load_lines(folder: Path, meta: Dict[str, Any]) -> Dict[str, list]:
         return {}
 
 
-def crop_line(im, box: List[float], polygon: Optional[list] = None):
-    """Cut one line out of a page image; blank everything outside its polygon if known."""
-    from PIL import Image, ImageDraw, ImageStat
+def crop_line(im, box: List[float], polygon: Optional[list] = None, mask: bool = True,
+              skew: float = 0.0, stretch: bool = True):
+    """Cut one line out of a page image.
+
+    With the model's outline (``polygon``) the neighbouring lines are blanked, but the outline is
+    first stretched sideways by 4% of the line width at each end (``stretch``): the segmenter
+    often stops short of the first and last letters, and an exact mask sliced words in half on the
+    first worksheets. The vertical edges follow the outline, so adjacent lines' ink stays out.
+    Without an outline (older pages) it is a plain box with modest padding, so a sliver of the
+    next line may show. ``skew`` (slope of a tilted line, from ingest.linegrid) straightens the
+    crop; whole-line rows from linegrid are already full width, so they pass ``stretch=False``.
+    """
+    import math
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
     W, H = im.size
     x0, y0, x1, y1 = box
-    l, t = max(0, int(x0) - PAD), max(0, int(y0) - PAD)
-    r, b = min(W, int(x1) + PAD), min(H, int(y1) + PAD)
+    h = max(1, y1 - y0)
+    use_mask = bool(mask and polygon and len(polygon) >= 3)
+    pad_y = max(PAD, int((0.30 if use_mask else 0.12) * h)) if not skew else PAD
+    pad_x = max(PAD, int(0.04 * (x1 - x0))) if stretch else PAD
+    l, t = max(0, int(x0) - pad_x), max(0, int(y0) - pad_y)
+    r, b = min(W, int(x1) + pad_x), min(H, int(y1) + pad_y)
     crop = im.crop((l, t, r, b)).convert("RGB")
-    if polygon and len(polygon) >= 3:
-        mask = Image.new("L", crop.size, 0)
-        pts = [(float(x) - l, float(y) - t) for x, y in polygon]
-        ImageDraw.Draw(mask).polygon(pts, fill=255)
-        from PIL import ImageFilter
-        mask = mask.filter(ImageFilter.MaxFilter(5))        # keep descenders and flourishes
-        fill = tuple(int(v) for v in ImageStat.Stat(crop).median)
-        bg = Image.new("RGB", crop.size, fill)
-        crop = Image.composite(crop, bg, mask)
+    fill = tuple(int(v) for v in ImageStat.Stat(crop).median)
+    if use_mask:
+        m = Image.new("L", crop.size, 0)
+        ImageDraw.Draw(m).polygon([(float(x) - l, float(y) - t) for x, y in polygon], fill=255)
+        wide = m
+        if stretch:                                        # stretch sideways only, in steps
+            for dx in range(-pad_x, pad_x + 1, max(2, pad_x // 12)):
+                wide = ImageChops.lighter(wide, ImageChops.offset(m, dx, 0))
+        vp = max(2, int(0.06 * h)) if skew else max(2, int(0.08 * h))
+        wide = wide.filter(ImageFilter.MaxFilter(2 * vp + 1))      # a little room for tall letters
+        crop = Image.composite(crop, Image.new("RGB", crop.size, fill), wide)
+    if skew:
+        crop = crop.rotate(math.degrees(math.atan(skew)), resample=Image.BICUBIC, expand=True, fillcolor=fill)
+        bbox = ImageChops.difference(crop, Image.new("RGB", crop.size, fill)).getbbox()
+        if bbox:                                           # drop the blank corners the rotation made
+            crop = crop.crop((bbox[0], max(0, bbox[1] - PAD), bbox[2], min(crop.height, bbox[3] + PAD)))
     return crop
 
 
@@ -157,9 +179,9 @@ def export(name: Optional[str] = None, folders: Optional[Iterable[Path]] = None,
                     continue
                 # the stored box is what the user saw; take the polygon only from a line that
                 # still has that box (the model's lines may have been recomputed since)
-                poly = None
+                poly, skew, grid = None, 0.0, False
                 if 0 <= i < len(current) and current[i].get("b") == rec.get("b"):
-                    poly = current[i].get("p")
+                    poly, skew, grid = current[i].get("p"), current[i].get("sk", 0.0), bool(current[i].get("grid"))
                 kind = rec.get("kind", "text")
                 if kind != "text":
                     layout.append({"folder": folder.name, "page": page, "line": i,
@@ -172,7 +194,7 @@ def export(name: Optional[str] = None, folders: Optional[Iterable[Path]] = None,
                 if not text:
                     skipped["empty"] += 1
                     continue
-                usable.append((i, text, rec["b"], poly, kind))
+                usable.append((i, text, rec["b"], poly, kind, skew, grid))
             if usable:
                 pages.append({"folder": folder, "page": page, "lang": lang, "lines": usable})
 
@@ -184,9 +206,9 @@ def export(name: Optional[str] = None, folders: Optional[Iterable[Path]] = None,
         key = f"{pg['folder'].name}/{pg['page']}"
         stem = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{pg['folder'].name}__{Path(pg['page']).stem}")
         with Image.open(pg["folder"] / pg["page"]) as im:
-            for i, text, box, poly, kind in pg["lines"]:
+            for i, text, box, poly, kind, skew, grid in pg["lines"]:
                 rel = f"lines/{stem}__{i:03d}.png"
-                crop_line(im, box, poly).save(out / rel)
+                crop_line(im, box, poly, skew=skew, stretch=not grid).save(out / rel)
                 (out / rel).with_suffix(".gt.txt").write_text(text + "\n", encoding="utf-8")
                 (val_list if key in val else train_list).append(rel)
                 n_chars += len(text)

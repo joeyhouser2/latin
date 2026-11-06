@@ -228,11 +228,44 @@ class Scans:
                 rec = None                                   # lines were recomputed since: not this line
             lines.append({"i": i, "t": rec["t"] if rec else ln["t"], "orig": ln["t"],
                           "c": ln.get("c", 0), "b": ln["b"],
+                          "grid": bool(ln.get("grid")),
                           "kind": rec.get("kind", "text") if rec else "text",
                           "ok": bool(rec and rec.get("ok")),
                           "edited": bool(rec and rec["t"] != ln["t"])})
         return {"lines": lines, "verified": sum(1 for x in lines if x["ok"]),
                 "edited": sum(1 for x in lines if x["edited"])}
+
+    def regrid(self, source: Optional[str], name: str) -> Optional[str]:
+        """Merge a fragmented page's boxes into whole lines (ingest.linegrid), in place.
+
+        Returns "done", "already", or None when the page does not need it. The segmenter's own
+        lines are kept once in ``<cache>.lines.orig.json``; corrections saved against the old
+        lines stop matching and are ignored (the box differs).
+        """
+        got = self._line_detail(source, name)
+        if got is None:
+            return None
+        loc, cache, detail = got
+        from ingest import htr, linegrid
+        if any(x.get("grid") for x in detail):
+            return "already"
+        if not linegrid.is_fragmented(detail):
+            return None
+        from PIL import Image
+        Image.MAX_IMAGE_PIXELS = None
+        with Image.open(loc["dir"] / name) as im:
+            rows = linegrid.regularize(im, detail)
+        lp = Path(htr.lines_path(str(cache)))
+        store = _read_json_any(lp)
+        backup = lp.with_name(lp.name.replace(".lines.json", ".lines.orig.json"))
+        orig = _read_json_any(backup)
+        orig.setdefault(name, store[name])
+        backup.write_text(json.dumps(orig, ensure_ascii=False), encoding="utf-8")
+        store[name] = rows
+        tmp = lp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, lp)
+        return "done"
 
     def line_save(self, source: Optional[str], name: str, i: int, text: Optional[str] = None,
                   kind: Optional[str] = None, ok: Optional[bool] = None,
@@ -285,7 +318,8 @@ class Scans:
         from training.htr_export import crop_line
         Image.MAX_IMAGE_PIXELS = None
         with Image.open(img) as im:
-            crop = crop_line(im, detail[i]["b"], detail[i].get("p"))
+            ln = detail[i]
+            crop = crop_line(im, ln["b"], ln.get("p"), skew=ln.get("sk", 0.0), stretch=not ln.get("grid"))
         buf = io.BytesIO()
         crop.save(buf, format="PNG")
         return buf.getvalue()

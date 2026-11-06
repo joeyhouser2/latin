@@ -24,6 +24,7 @@ Type the results into Word (or any text file), one line per row:
     P007-L06 G: tubas             an interlinear gloss, with its text
     P007-L07 X                    not text (neumes, ornament, bleed-through)
     P007-L08 ?                    can't read it / skip (nothing is recorded)
+    P007-L09 B                    picture cut off or wrong line (listed in bad_lines.json, not trained on)
 
 ``import`` reads a .docx (or .txt) and records every row in the scan folders'
 ``line_corrections.json`` -- the store the viewer's Lines tab uses, so rows show up there and
@@ -53,18 +54,19 @@ IMG_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 KEY_HTML = ("<p><b>How to fill in</b> &mdash; one line per row, e.g. <code>P001-L03 =</code> (reading is right), "
             "<code>P001-L04 corrected text</code>, <code>P001-L05 M: margin text</code>, "
             "<code>P001-L06 G: gloss text</code>, <code>P001-L07 X</code> (not text), "
-            "<code>P001-L08 ?</code> (unreadable).</p>")
+            "<code>P001-L08 ?</code> (unreadable), <code>P001-L09 B</code> (the picture is cut off or shows "
+            "the wrong line: nothing is recorded, but it is listed so the segmentation can be fixed).</p>")
 STYLE = """
  @page { size: A4; margin: 12mm; }
  body { font: 11pt Georgia, serif; color: #000; }
  h2 { margin: 0 0 2mm; } h3 { margin: 0 0 3mm; }
  .meta { margin: 0 0 4mm; color: #555; font-size: 9pt; }
  section { break-after: page; }
- .thumb { max-width: 100%; max-height: 225mm; }
+ .thumb { max-width: 100%; max-height: 232mm; }
  table { width: 100%; border-collapse: collapse; }
  td { border-bottom: 1px solid #999; padding: 2mm 1mm; vertical-align: top; }
  td.id { width: 22mm; font: bold 10pt monospace; }
- td img { max-width: 100%; max-height: 14mm; display: block; }
+ td img { width: 100%; height: auto; max-height: 34mm; object-fit: contain; object-position: left; display: block; }
  .model { font-size: 10pt; color: #333; margin-top: 1mm; }
  .blank { height: 9mm; border-bottom: 1px dotted #777; margin-top: 2mm; }
  .key { font-size: 9pt; border: 1px solid #999; padding: 2mm; margin-bottom: 4mm; }
@@ -103,6 +105,9 @@ STYLE_ORDER = ["uncial", "carolingian", "gothic", "hand-other", "greek-min", "pr
 STYLES: Dict[str, Dict[str, Any]] = {
     "uncial": {
         "title": "Uncial / half-uncial on papyrus \u2014 St Gall Cod. Sang. 226",
+        "all_lines": True,
+        "regrid": True,
+        "min_pages": 4,
         "when": "written after 650, southern France; the only papyrus codex at St Gall",
         "blind": True,
         "look": ["A formal-uncial base (rounded capitals, little ascender/descender contrast) mixed with minuscule-looking e, r, h, n: expect letters that are neither one script nor the other.",
@@ -331,18 +336,29 @@ def choose_diverse(entries: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]
             if left and quota[id(e)] < min(cap, len(e["images"])):
                 quota[id(e)] += 1
                 left -= 1
+    for e in usable:                                         # some styles want a minimum share
+        need = STYLES.get(style_of(e), {}).get("min_pages", 0)
+        quota[id(e)] = max(quota[id(e)], min(need, len(e["images"])))
     per_folder = []
     for e in order:
         q = quota[id(e)]
         if not q:
             continue
         names = e["images"]
-        step = len(names) / q
-        pages = list(dict.fromkeys(names[min(len(names) - 1, int(step * (k + 0.5)))] for k in range(q)))
         lp = Path(htr.lines_path(str(e["cache"])))
-        if lp.exists():                                      # swap half for the least-confident pages
-            det = json.loads(lp.read_text(encoding="utf-8"))
-            weak = sorted((p for p in det if p in names and p not in pages),
+        det = json.loads(lp.read_text(encoding="utf-8")) if lp.exists() else {}
+        rich = [p for p in names if len(det.get(p, [])) >= 10]    # pages known to carry text
+        step = len(names) / q
+        spread = [names[min(len(names) - 1, int(step * (k + 0.5)))] for k in range(q)]
+        if rich:
+            rstep = len(rich) / min(q, len(rich))
+            pages = [rich[min(len(rich) - 1, int(rstep * (k + 0.5)))] for k in range(min(q, len(rich)))]
+            pages += [p for p in spread if p not in pages][: q - len(pages)]
+        else:
+            pages = spread
+        pages = list(dict.fromkeys(pages))
+        if det and len(rich) > q:                            # swap half for the least-confident pages
+            weak = sorted((p for p in rich if p not in pages),
                           key=lambda p: sum(x.get("c", 1) for x in det[p]) / max(1, len(det[p])))
             for k in range(min(len(weak), len(pages) // 2)):
                 pages[-1 - k] = weak[k]
@@ -403,22 +419,45 @@ def ensure_lines(sc, entry: Dict[str, Any], pages: List[str]) -> None:
                           model=str(model), log=lambda m: None, detail_only=True)
 
 
-def pick_lines(lines: List[Dict[str, Any]], k: int) -> List[Dict[str, Any]]:
-    """k lines of a page: half the least-confident, half spread evenly; reading order kept."""
-    lines = [x for x in lines if x["orig"].strip()]
-    if k <= 0 or len(lines) <= k:
+def pick_lines(lines: List[Dict[str, Any]], k: int, start: int = 1) -> List[Dict[str, Any]]:
+    """k consecutive lines of a page from line ``start`` (1-based); 0 = the whole page."""
+    lines = [x for x in lines if x["orig"].strip() or x.get("grid")]
+    if k <= 0:
         return lines
-    weak = {x["i"] for x in sorted(lines, key=lambda x: x["c"])[: k // 2]}
-    rest = [x for x in lines if x["i"] not in weak]
-    need = k - len(weak)
-    step = len(rest) / need
-    spread = {rest[min(len(rest) - 1, int(step * (j + 0.5)))]["i"] for j in range(need)}
-    keep = weak | spread
-    return [x for x in lines if x["i"] in keep]
+    return lines[max(0, start - 1): max(0, start - 1) + k]
+
+
+def alpha_share(text: str) -> float:
+    """Share of non-space characters that are letters: neume and ornament lines score near 0."""
+    chars = [c for c in text if not c.isspace()]
+    return sum(c.isalpha() for c in chars) / len(chars) if chars else 0.0
+
+
+def overview(im, all_lines: List[Dict[str, Any]], shown: List[Dict[str, Any]]):
+    """The page with this sheet's lines boxed and numbered (others thin grey): finds a line on the page."""
+    from PIL import ImageDraw, ImageFont
+    page = im.convert("RGB")
+    W, H = page.size
+    scale = 1300 / max(W, 1)
+    page = page.resize((1300, max(1, int(H * scale))))
+    d = ImageDraw.Draw(page)
+    try:
+        font = ImageFont.load_default(size=20)
+    except TypeError:
+        font = ImageFont.load_default()
+    keep = {x["i"] for x in shown}
+    for x in all_lines:
+        x0, y0, x1, y1 = (v * scale for v in x["b"])
+        if x["i"] in keep:
+            d.rectangle((x0, y0, x1, y1), outline=(210, 30, 30), width=2)
+            d.text((max(0, x0 - 2), max(0, y0 - 22)), f"L{x['i'] + 1:02d}", fill=(210, 30, 30), font=font)
+        else:
+            d.rectangle((x0, y0, x1, y1), outline=(170, 170, 170), width=1)
+    return page
 
 
 def build(name: str, mixed: List[Dict[str, Any]], blind: bool, analyze: bool, diverse: bool,
-          per_page: int = 12, by_style: bool = False) -> int:
+          per_page: int = 12, by_style: bool = False, start_line: int = 1) -> int:
     from PIL import Image
     from web.scans import Scans
     Image.MAX_IMAGE_PIXELS = None
@@ -446,12 +485,25 @@ def build(name: str, mixed: List[Dict[str, Any]], blind: bool, analyze: bool, di
         src = source_for(e)
         style = style_of(e)
         row_blind = blind or bool(STYLES.get(style, {}).get("blind"))
+        if analyze and STYLES.get(style, {}).get("regrid"):   # fragmented segmentation -> whole lines
+            try:
+                if sc.regrid(src, page) == "done":
+                    print(f"  {e['dir'].name}/{page}: rebuilt whole lines from fragments")
+            except Exception as exc:                       # noqa: BLE001
+                print(f"  {e['dir'].name}/{page}: line rebuild failed ({exc})")
         got = sc.line_texts(src, page)
         if got is None:
             skipped.append(f"{e['dir'].name}/{page}")
             continue
-        got["lines"] = pick_lines(got["lines"], per_page)
-        if len(got["lines"]) < 3:
+        all_lines = [x for x in got["lines"] if x["orig"].strip() or x.get("grid")]
+        plain = [x for x in all_lines if not x.get("grid")]
+        sym = sum(1 for x in plain if alpha_share(x["orig"]) < 0.5 or len(x["orig"].strip()) < 3)
+        if plain and len(plain) == len(all_lines) and sym > 0.5 * len(plain):
+            skipped.append(f"{e['dir'].name}/{page} (mostly symbols: neumes or ornament)")
+            continue
+        got["lines"] = pick_lines(got["lines"], 0 if STYLES.get(style, {}).get("all_lines") else per_page,
+                                  start_line)
+        if len(got["lines"]) < 6:
             skipped.append(f"{e['dir'].name}/{page} (too few lines)")
             continue
         if src not in manifest["sources"]:
@@ -461,10 +513,8 @@ def build(name: str, mixed: List[Dict[str, Any]], blind: bool, analyze: bool, di
         pid = f"P{len(body) + 1:03d}"
         classes[e["class"]] = classes.get(e["class"], 0) + 1
         with Image.open(e["dir"] / page) as im:
-            thumb = im.convert("RGB")
-            thumb.thumbnail((900, 1200))
             tb = io.BytesIO()
-            thumb.save(tb, format="JPEG", quality=70)
+            overview(im, all_lines, got["lines"]).save(tb, format="JPEG", quality=75)
         if by_style and style != last_style:
             last_style = style
             group = [m for m in mixed if style_of(m["entry"]) == style]
@@ -480,19 +530,23 @@ def build(name: str, mixed: List[Dict[str, Any]], blind: bool, analyze: bool, di
         for x in got["lines"]:
             rid = f"{pid}-L{x['i'] + 1:02d}"
             crop = Image.open(io.BytesIO(sc.line_image(src, page, x["i"])))
-            crop.thumbnail((1100, 160))                      # paper does not need the full scan size
+            crop.thumbnail((1500, 320))                      # ~9 px/mm across a portrait page
             cb = io.BytesIO()
-            crop.convert("L").save(cb, format="JPEG", quality=75)
+            crop.convert("L").save(cb, format="JPEG", quality=82)
             manifest["rows"][rid] = {"s": si, "page": page, "line": x["i"], "orig": x["orig"], "b": x["b"]}
             model = "" if row_blind else f'<div class="model">{html.escape(x["orig"])}</div>'
             rows.append(f'<tr><td class="id">{rid}</td><td><img src="data:image/jpeg;base64,'
                         f'{base64.b64encode(cb.getvalue()).decode()}">{model}<div class="blank"></div></td></tr>')
+        heading = e["label"]
+        if heading.startswith("http") or heading.startswith("iiif_") or heading.startswith("bench_"):
+            heading = STYLES.get(style, {}).get("title", heading)      # not a raw URL or folder name
         body.append(
-            f'<section><h2>{pid} &mdash; {html.escape(e["label"])}</h2>'
+            f'<section><h2>{pid} &mdash; {html.escape(heading)}</h2>'
             f'<p class="meta">{html.escape(style)} &middot; {html.escape(page)} &middot; '
             f'read by {html.escape(e["cache"].name)}</p>'
             f'<img class="thumb" src="data:image/jpeg;base64,{base64.b64encode(tb.getvalue()).decode()}">'
-            f'</section><section class="lines"><h3>{pid}: {len(rows)} lines</h3><table>{"".join(rows)}</table></section>')
+            f'</section><section class="lines"><h3>{pid}: lines {got["lines"][0]["i"] + 1}\u2013{got["lines"][-1]["i"] + 1} '
+            f'of {len(all_lines)} (consecutive)</h3><table>{"".join(rows)}</table></section>')
     if not body:
         raise SystemExit("none of the chosen pages has line detail yet; rerun with --analyze "
                          "(handwriting wants a free GPU)")
@@ -508,22 +562,23 @@ def build(name: str, mixed: List[Dict[str, Any]], blind: bool, analyze: bool, di
 
 
 def make_doc(doc_id: int, pages: str, name: Optional[str], blind: bool, analyze: bool,
-             per_page: int = 12) -> int:
+             per_page: int = 12, start_line: int = 1) -> int:
     _src, _lang, _title = _doc_row(doc_id)
     entry = next((e for e in pool() if e.get("doc") == doc_id and e["cache"] is not None), None)
     if entry is None:
         raise SystemExit("this document has no page images and text cache on this computer")
     chosen = parse_pages(pages, entry["images"])
     return build(name or f"doc{doc_id}-{pages.replace(',', '_')}",
-                 [{"entry": entry, "page": p} for p in chosen], blind, analyze, False, per_page)
+                 [{"entry": entry, "page": p} for p in chosen], blind, analyze, False, per_page,
+                 False, start_line)
 
 
 def make_diverse(n: int, name: Optional[str], blind: bool, analyze: bool, per_page: int = 12,
-                 by_style: bool = False) -> int:
+                 by_style: bool = False, start_line: int = 1) -> int:
     mixed = choose_diverse(pool(), n)
     if not mixed:
         raise SystemExit("no scan folders with a text cache on this computer")
-    return build(name or f"diverse-{n}", mixed, blind, analyze, True, per_page, by_style)
+    return build(name or f"diverse-{n}", mixed, blind, analyze, True, per_page, by_style, start_line)
 
 
 # ---------------------------------------------------------------------------
@@ -544,6 +599,8 @@ def parse_row(rest: str):
     r = rest.strip()
     if r in ("", "?"):
         return None
+    if r.upper() == "B":
+        return ("bad", None, False)
     if r == "=":
         return ("text", None, True)
     if r.upper() == "X":
@@ -563,7 +620,7 @@ def do_import(name: str, path: str, apply: bool) -> int:
         _src, language, _t = _doc_row(manifest["doc"])
         sources, languages = [manifest["source"]], [language]
     sc = Scans()
-    todo, unknown, skipped = [], [], 0
+    todo, unknown, skipped, bad = [], [], 0, {}
     for line in docx_text(Path(path)):
         m = ROW.match(line)
         if not m:
@@ -577,10 +634,13 @@ def do_import(name: str, path: str, apply: bool) -> int:
         if parsed is None:
             skipped += 1
             continue
+        if parsed[0] == "bad":
+            bad[rid] = row
+            continue
         todo.append((rid, row, *parsed))
     n_edit = sum(1 for _r, row, k, t, _ok in todo if t is not None and t != row["orig"])
     print(f"{len(todo)} rows to record ({n_edit} corrected text, "
-          f"{sum(1 for x in todo if x[2] != 'text')} labelled), {skipped} skipped, "
+          f"{sum(1 for x in todo if x[2] != 'text')} labelled), {skipped} skipped, {len(bad)} bad crops, "
           f"{len(unknown)} unknown IDs{': ' + ', '.join(unknown[:8]) if unknown else ''}")
     if not apply:
         print("dry run; add --apply to record them")
@@ -589,6 +649,9 @@ def do_import(name: str, path: str, apply: bool) -> int:
         si = row.get("s", 0)
         sc.line_save(sources[si], row["page"], row["line"], text=text, kind=kind, ok=ok,
                      language=languages[si])
+    if bad:
+        (OUT / name / "bad_lines.json").write_text(json.dumps(bad, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"{len(bad)} bad crops listed in {OUT / name / 'bad_lines.json'}")
     print(f"recorded {len(todo)} lines")
     return 0
 
@@ -607,8 +670,8 @@ def main() -> int:
     m.add_argument("--by-style", action="store_true",
                    help="group pages by writing style, each group opened by a style card (uncial first)")
     m.add_argument("--lines-per-page", type=int, default=12, metavar="K",
-                   help="lines to put on the sheet per page (0 = all; default 12: half the least "
-                        "confident, half spread evenly)")
+                   help="consecutive lines per page, from --start-line (0 = the whole page; default 12)")
+    m.add_argument("--start-line", type=int, default=1, metavar="S", help="first line of each page to include")
     sub.add_parser("pool", help="list the scan material available for sheets")
     i = sub.add_parser("import")
     i.add_argument("file")
@@ -619,10 +682,10 @@ def main() -> int:
         return show_pool()
     if a.cmd == "make":
         if a.diverse:
-            return make_diverse(a.diverse, a.name, a.blind, a.analyze, a.lines_per_page, a.by_style)
+            return make_diverse(a.diverse, a.name, a.blind, a.analyze, a.lines_per_page, a.by_style, a.start_line)
         if a.doc is None:
             ap.error("make needs --doc or --diverse")
-        return make_doc(a.doc, a.pages, a.name, a.blind, a.analyze, a.lines_per_page)
+        return make_doc(a.doc, a.pages, a.name, a.blind, a.analyze, a.lines_per_page, a.start_line)
     return do_import(a.name, a.file, a.apply)
 
 
