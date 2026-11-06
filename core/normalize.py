@@ -76,3 +76,32 @@ def is_worth_indexing(text: str) -> bool:
     """
     words = _WORD.findall(text or "")
     return len(words) >= 3 and sum(map(len, words)) >= 5
+
+
+def _letters(text: str) -> int:
+    return sum(map(len, _WORD.findall(text or "")))
+
+
+def select_for_index(segments, text_of, doc_of) -> list:
+    """Segments that should get a vector: every one passing is_worth_indexing,
+    plus, for a document with none that pass, its segment with the most letters.
+
+    The fallback keeps very short texts (epigrams, ostraca, one-line capitularies)
+    reachable through vector search. A document with no letters at all gets
+    nothing. Input order is kept.
+    """
+    chosen, best = [], {}
+    has_long = set()
+    for s in segments:
+        text, doc = text_of(s), doc_of(s)
+        if is_worth_indexing(text):
+            chosen.append(s)
+            has_long.add(doc)
+        else:
+            n = _letters(text)
+            if n and n > best.get(doc, (0, None))[0]:
+                best[doc] = (n, s)
+    fallback = {id(s) for d, (_, s) in best.items() if d not in has_long}
+    if not fallback:
+        return chosen
+    return [s for s in segments if id(s) in fallback or is_worth_indexing(text_of(s))]

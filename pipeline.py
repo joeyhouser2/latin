@@ -19,7 +19,7 @@ from core.stylizer import Stylizer, LocalLLMStylizer, Seq2SeqStylizer, StyleUnit
 from core.scansion import scan_lines
 from core.segmenter import segment_text
 from ingest.german_detect import is_german
-from core.normalize import embedding_text_for, is_worth_indexing, strip_greek_diacritics
+from core.normalize import embedding_text_for, select_for_index, strip_greek_diacritics
 from core.search import SearchService, SearchHit
 
 
@@ -52,6 +52,32 @@ GERMAN_SRC = "deu_Latn"
 # Stylizer backends: "llm" = prompted local instruct model (rich, slow, all presets);
 # "t5" = the trained fast/offline Victorian model (register baked in, victorian only).
 VICTORIAN_T5_DIR = "models/stylizer-victorian"
+
+
+class IndexingError(RuntimeError):
+    """A document reached the store but could not be added to the vector index."""
+
+
+def _is_cuda_oom(exc: BaseException) -> bool:
+    """True for a CUDA out-of-memory error (torch's own type, or the older
+    RuntimeError / cuBLAS-alloc forms that only say so in the message)."""
+    try:
+        import torch
+        if isinstance(exc, torch.cuda.OutOfMemoryError):
+            return True
+    except Exception:
+        pass
+    msg = str(exc).lower()
+    return "out of memory" in msg or "cublas_status_alloc_failed" in msg
+
+
+def _free_cuda_cache() -> None:
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 
 class Library:
@@ -122,20 +148,42 @@ class Library:
         return doc
 
     def _embed_document(self, doc: Document) -> None:
-        segments = [s for s in doc.iter_segments()
-                    if is_worth_indexing(s.text_for_embedding)]
+        """Embed a stored document's segments and add them to the index.
+
+        Called after store.add_document has committed, so a failure here would
+        leave the document in corpus.db with no vectors. A CUDA out-of-memory
+        error (GPU busy with training/translation) is retried on CPU. Anything
+        that still fails raises IndexingError naming the document, so callers
+        that catch and print exceptions don't report it as merely "skipped".
+        """
+        segments = select_for_index(list(doc.iter_segments()),
+                                    lambda s: s.text_for_embedding, lambda s: doc.id)
         if not segments:
             return
-        embeddings = self.embedder.embed(
-            [s.text_for_embedding for s in segments], show_progress=True
-        )
+        texts = [s.text_for_embedding for s in segments]
+        try:
+            try:
+                embeddings = self.embedder.embed(texts, show_progress=True)
+            except Exception as exc:
+                if not _is_cuda_oom(exc):
+                    raise
+                print(f"Embedding doc {doc.id}: CUDA out of memory, retrying on CPU")
+                _free_cuda_cache()
+                embeddings = self.embedder.embed(texts, show_progress=True, device="cpu")
+        except Exception as exc:
+            raise IndexingError(
+                f"document {doc.id} ({doc.title!r}) is saved in the store but NOT in "
+                f"the search index: embedding failed ({type(exc).__name__}: {exc}). "
+                f"Check with scripts/index_coverage.py; fix with scripts/reindex.py."
+            ) from exc
         self.vectors.add([s.id for s in segments], embeddings)
 
     def reindex(self, batch_size: int = 256) -> int:
         """Backfill embed_text and rebuild the FAISS index from the store.
 
         Run after changing the embedding/normalization logic. Returns the number
-        of segments indexed, which leaves out those failing is_worth_indexing.
+        of segments indexed: those passing is_worth_indexing, plus one fallback
+        segment for any document that has none (see select_for_index).
         """
         segments = self.store.iter_all_segments()
         if not segments:
@@ -154,7 +202,9 @@ class Library:
             print(f"Backfilled embed_text for {len(updates)} segments")
 
         total = len(segments)
-        segments = [s for s in segments if is_worth_indexing(s.text_for_embedding)]
+        doc_of_section = dict(self.store.conn.execute("SELECT id, doc_id FROM sections"))
+        segments = select_for_index(segments, lambda s: s.text_for_embedding,
+                                    lambda s: doc_of_section.get(s.section_id))
         print(f"Skipping {total - len(segments)} segments too short to index")
 
         self.vectors = VectorStore()

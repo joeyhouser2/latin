@@ -67,7 +67,7 @@ Newest decisions at the top of each section.
 
 ## Infrastructure / robustness
 
-- [ ] **Ingest embedding robustness** — embedding currently OOMs/crashes if the GPU is busy training (the docs land in the store but not the index; fixed only by `reindex.py`). Make `_embed_document` fall back to CPU on CUDA OOM, or embed on CPU by default during ingest.
+- [x] **Ingest embedding robustness** — `Library._embed_document` now retries on CPU after a CUDA OOM (`Embedder.embed(device="cpu")` returns the model to its GPU afterwards). Any failure that remains raises `IndexingError` naming the document. This matters because the store has already committed the document, and ingest scripts that catch exceptions used to print "skipped" for a document that was really stored but never indexed. Selftest: `scripts/embed_oom_selftest.py`. Read-only check: `scripts/index_coverage.py` reports gaps (segments that pass `is_worth_indexing` but have no vector), documents with text but no vector, and orphan index ids, and exits 1 if it finds any. Ingest and reindex give a short-only document one fallback segment (`select_for_index`). On 2026-11-06 it found none of the three (868,131 vectors).
 - [ ] **Tests** — unit tests for `core/` (store, vectorstore, segmenter, normalize) and a smoke test per connector.
 - [ ] **Metadata enrichment** — populate `century`/dates more consistently from sources (drives discovery filters).
 

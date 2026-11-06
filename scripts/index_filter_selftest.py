@@ -14,7 +14,7 @@ import faiss
 import numpy as np
 
 from core.embedder import EMBEDDING_DIM
-from core.normalize import is_worth_indexing
+from core.normalize import is_worth_indexing, select_for_index
 from pipeline import Library
 
 LONG = ["Ave maris stella Dei mater alma.", "Qui tollis peccata mundi."]
@@ -50,7 +50,22 @@ def main():
         assert lib.reindex() == len(LONG)
         assert indexed_ids(lib) == want, "reindex should index only long segments"
         assert len(lib.store.iter_all_segments()) == len(LONG + SHORT), "reindex must not drop text"
+
+        # A document with only short segments still gets one vector: the
+        # segment with the most letters. One with no letters gets none.
+        tiny = lib.add_document("12.\nIn Christo\nCod.", "Tiny", verse=True)
+        tsegs = {s.latin_text: s.id for s in tiny.iter_segments()}
+        bare = lib.add_document("1.\n2.", "Numbers only", verse=True)
+        expect = want | {tsegs["In Christo"]}
+        assert indexed_ids(lib) == expect, "short-only doc should get its best segment"
+        assert lib.reindex() == len(expect)
+        assert indexed_ids(lib) == expect, "reindex should keep the fallback segment"
+        assert not ({s.id for s in bare.iter_segments()} & indexed_ids(lib))
         lib.store.close()
+
+    picked = select_for_index(["Cod.", "Vatican.", "x"], str, lambda t: 1)
+    assert picked == ["Vatican."], picked
+    assert select_for_index(["a b c d e", "Cod."], str, lambda t: 1) == ["a b c d e"]
     print("index filter selftest: OK")
 
 
