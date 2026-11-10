@@ -14,20 +14,27 @@ Goal: test whether we can find quotations of lost Greek historians automatically
 
 ### Recall on a heavily mined text
 
-DFHG names Athenaeus as the source of 951 fragments, once Müller's typos ("Athenoeus", "Atehn.") and "same as above" notes are resolved.
+DFHG names Athenaeus as the source of 965 fragments, once Müller's typos ("Athenoeus", "Atehn."), "same as above" notes and section headings ("ΕΚ ΤΟΥ …") are resolved. A heading can over-attribute a group, which probably accounts for some of the misses.
 
 | Coverage at least | Fragments found | Shuffled-word control |
 |---:|---:|---:|
-| 30% | 99.1% | 0.1% |
-| 50% | 98.3% | 0.0% |
-| 70% | 96.1% | 0.0% |
-| 90% | 77.2% | 0.0% |
+| 30% | 97.6% | 0.0% |
+| 50% | 96.9% | 0.0% |
+| 70% | 94.7% | 0.0% |
+| 90% | 76.1% | 0.0% |
 
 This is close to a best case: clean text, and fragments printed from the same work.
 
 ### Recall on OCR
 
-The same test on archive.org OCR of Stobaeus (three volumes, 27 known fragments) found 89% at 30% coverage and 70% at 50% coverage, but only 4% at 90%. The sample is small, and the three volumes may not contain every fragment. OCR is usable with a lower threshold, but it clearly loses wording.
+The same test on archive.org OCR, with 50% coverage required:
+
+| Text (OCR scans) | Known fragments | Found at 30% | Found at 50% | Found at 90% |
+|---|---:|---:|---:|---:|
+| Stobaeus (5 volumes) | 67 | 82% | 64% | 2% |
+| Photius, *Lexicon* (Naber, 2 volumes) | 47 | 85% | 81% | 13% |
+
+OCR is usable with a lower threshold, but it clearly loses wording. Stobaeus still lacks Hense's volume II, whose archive.org text file returned server errors, so some of its known fragments can't be found yet. OCR noise also inflates "unmatched" citations: a garbled word breaks the match with the DFHG fragment, so expect more false leads from these texts.
 
 ### Other texts
 

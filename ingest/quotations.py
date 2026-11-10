@@ -41,9 +41,18 @@ WITNESSES = {
                        r"Schol[^|]*Pind|Pind[^|]*[Ss]chol"),
     "procopius_catena": ("Procopius of Gaza, catena on the Octateuch (PG 87, OCR)", "pg",
                          {"pg087_1.txt": f"{_GH}/calfa-co/Patrologia-Graeca/main/PG087_1/PG087_1_text.txt"}, r"Procop[^|]*Gaz"),
-    "stobaeus_ocr": ("Stobaeus, Anthology (archive.org OCR, 3 vols)", "plain",
+    # New volumes go at the end: a lead's key is its word position, so the order must not change.
+    # Hense vol. II and Wachsmuth's 1884 vols. I-II have no usable Greek OCR on archive.org.
+    "stobaeus_ocr": ("Stobaeus, Anthology (archive.org OCR, 5 vols)", "plain",
                      {f"{i}.txt": _IA.format(i) for i in ("ioannisstobaeiec00stobuoft", "joannisstobaeian03stovuoft",
-                                                          "joannisstobaeian04stovuoft")}, r"Stob"),
+                                                          "joannisstobaeian04stovuoft",
+                                                          "ioannisstobaeie01meingoog",      # Meineke, Eclogae book I
+                                                          "adw8682.0005.001.umich.edu")},   # Hense, vol. V
+                     r"Stob|ΣΤΟΒΑ"),
+    # Naber's edition (1864-65); Porson's 1822 text adds only 1 of 47 known fragments.
+    "photius_lexicon": ("Photius, Lexicon (Naber, archive.org OCR, 2 vols)", "plain",
+                        {f"{i}.txt": _IA.format(i) for i in ("photiipatriarch00nabegoog", "photiipatriarcha02phot")},
+                        r"Phot[^|]*Lex|Lex[^|]*Phot"),
 }
 
 K = 3  # words per shingle; 3 keeps the shuffled-word control at about 0
@@ -53,8 +62,9 @@ WORD = re.compile(r"[Ͱ-Ͽἀ-῿]+")
 TEI_SKIP = {"note", "bibl", "teiHeader"}
 
 # Mueller's "same source as the previous fragment", which the API returns as is:
-# "Idem XII, p. 518", "[Id. v. X", "— Ibid.", "Adde XV, p. 677", or a bare "XI, p. 483".
-SAME_WITNESS = re.compile(r"^[\s\[(—–-]*(?:(?:idem|id\.|ibid|ibidem|eadem|eodem|ead\.|adde)|[IVXL]+\s*[,.]\s*p\.)", re.I)
+# "Idem XII, p. 518", "[Id. v. X", "— Ibid.", "Adde XV, p. 677", or a bare "XI, p. 483" / "XLIV, 41".
+SAME_WITNESS = re.compile(r"^[\s\[(—–-]*(?:(?:idem|ibid|ibidem|eadem|eodem|adde)\b|id\.|ibid\.|ead\."
+                          r"|[IVXLC]+\s*[,.]\s*(?:p\.\s*)?\d)", re.I)
 # Some DFHG witness fields use Greek capitals inside Latin words ("Αthenaeus").
 HOMOGLYPHS = str.maketrans("ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "ABEZHIKMNOPTYX")
 
@@ -144,12 +154,16 @@ def read_pg(path):
 
 
 def read_plain(paths):
-    """Plain OCR text such as archive.org's _djvu.txt, located by file name."""
+    """Plain OCR text such as archive.org's _djvu.txt, located by file and line.
+
+    archive.org's text files have no page markers, so a line number (counted after
+    hyphenated line-ends are joined) is the most precise place we can give."""
     parts = []
     for path in paths:
         path = pathlib.Path(path)
-        text = path.read_text(encoding="utf-8", errors="replace")
-        parts.append((re.sub(r"-\s*\n\s*", "", text), path.stem))
+        text = re.sub(r"-[ \t]*\n[ \t]*", "", path.read_text(encoding="utf-8", errors="replace"))
+        for n, line in enumerate(text.split("\n"), 1):
+            parts.append((line + "\n", f"{path.stem} line {n}"))
     return parts
 
 
@@ -190,10 +204,14 @@ def load_dfhg(directory):
         if not isinstance(records, list):
             continue
         for r in resolve_witnesses(records):
+            # Some fragment groups name their source once, in a heading such as
+            # "ΕΚ ΤΟΥ ΣΤΟΒΑΙΟΥ ΑΝΘΟΛΟΓΙΟΥ", rather than in each source field.
+            heading = " ".join(n for n in (r.get("work_note"), r.get("section_note"), r.get("sub_volume_note"))
+                               if n and re.search(r"\b(?:ΕΚ|EX|APUD|AP\.)\b", n, re.I))
             fragments.append({
                 "author": r.get("author"),
                 "n": f"{r.get('fragment_number')}{r.get('fragment_letter') or ''}",
-                "witness": r["witness"],
+                "witness": r["witness"] + (f" | heading: {heading[:120]}" if heading else ""),
                 "work": (r.get("work") or "").strip(),
                 "text": r.get("text") or "",
                 "toks": [n for _, n in tokenize(r.get("text") or "")],

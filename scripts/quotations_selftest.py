@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import lead_triage
 from core.leads import LeadStore
-from ingest.quotations import WITNESSES, Witness, author_stems, find_citations, load_dfhg, norm, read_pg, read_tei, resolve_witnesses, score
+from ingest.quotations import WITNESSES, Witness, read_plain, author_stems, find_citations, load_dfhg, norm, read_pg, read_tei, resolve_witnesses, score
 
 PASSAGE = "πρώτην ἐπιστολὰς συντάξαι Ἄτοσσαν τὴν Περσῶν βασιλεύσασαν φησὶν Ἑλλάνικος ἐν τοῖς Περσικοῖς καὶ ἄλλα πολλὰ ἱστορεῖ"
 TEI_DOC = """<TEI xmlns="http://www.tei-c.org/ns/1.0"><text><body><div type="edition">
@@ -33,7 +33,8 @@ def main():
     assert records[4]["witness"] == "Athenaeus I" and records[5]["witness"] == ""
     # DFHG's typos and other "same as above" forms still count as Athenaeus.
     chained = resolve_witnesses([{"witness": "Athenoeus XIV, p. 638"}, {"witness": "— Ibid.:"},
-                                 {"witness": "Adde XV, p. 677"}, {"witness": "Atehn. IV, p. 140"}])
+                                 {"witness": "Adde XV, p. 677"}, {"witness": "Atehn. IV, p. 140"},
+                                 {"witness": "XLIV, 41:"}])
     assert all(re.search(WITNESSES["athenaeus"][3], r["witness"]) for r in chained), chained
     for other in ("Athenagoras in Deprecat.", "Diogen. Laert. IV, 13, de Cratete Atheniensi"):
         assert not re.search(WITNESSES["athenaeus"][3], other), other
@@ -54,6 +55,12 @@ def main():
         pg.write_text("$0=87_1 $8=18 $9=1\nλόγ-\nος πρῶτος\n", encoding="utf-8")
         words = Witness("pg", read_pg(pg))
         assert words.tok == ["λογοσ", "πρωτοσ"] and words.loc[0] == "p.18 col.1", words.tok
+        ocr = pathlib.Path(tmp) / "c_djvu.txt"
+        ocr.write_text("ΤΙΤΛΟΣ\nλόγ-\nος πρῶτος\nτέλος", encoding="utf-8")
+        words = Witness("plain", read_plain([ocr]))
+        assert words.tok == ["τιτλοσ", "λογοσ", "πρωτοσ", "τελοσ"], words.tok
+        assert words.loc == ["c_djvu line 1", "c_djvu line 2", "c_djvu line 2", "c_djvu line 3"], words.loc
+        assert resolve_witnesses([{"witness": "Suid."}, {"witness": "Idemque"}])[1]["witness"] == "Idemque"
         api = pathlib.Path(tmp) / "x.json"
         api.write_text('[{"author": "X", "fragment_number": "1", "witness": "Suid.", "text": "λόγος"}]', encoding="utf-8")
         assert load_dfhg(tmp)[0]["witness"] == "Suid."
