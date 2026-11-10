@@ -14,14 +14,14 @@ Goal: test whether we can find quotations of lost Greek historians automatically
 
 ### Recall on a heavily mined text
 
-DFHG names Athenaeus as the source of 933 fragments.
+DFHG names Athenaeus as the source of 951 fragments, once Müller's typos ("Athenoeus", "Atehn.") and "same as above" notes are resolved.
 
 | Coverage at least | Fragments found | Shuffled-word control |
 |---:|---:|---:|
-| 30% | 99.6% | 0.0% |
-| 50% | 98.8% | 0.0% |
-| 70% | 96.6% | 0.0% |
-| 90% | 77.8% | 0.0% |
+| 30% | 99.1% | 0.1% |
+| 50% | 98.3% | 0.0% |
+| 70% | 96.1% | 0.0% |
+| 90% | 77.2% | 0.0% |
 
 This is close to a best case: clean text, and fragments printed from the same work.
 
@@ -80,16 +80,39 @@ My expectation, from memory and unverified, is that the Aristodemus passages are
 
 ## Running it
 
+### In the web app
+
+The **Leads** tab does the whole loop:
+
+1. **Find quotations** queues a CPU job (`mine_quotes`) for the ticked texts. The first run downloads DFHG, which takes about 10 minutes.
+2. **Sort … with the local model** queues a GPU job (`triage_leads`). A private Ollama reads each untagged lead and tags it: for a citation, whether the name means the DFHG historian, and whether it's a quotation, paraphrase or passing mention; for a reuse lead, how close the wording is. It also gives a rough English translation. The tags only order and filter the list.
+3. **Review**: filter by text, kind, tag and verdict, and mark each lead *new*, *already collected*, *not a quotation* or *unsure*, with a note such as a BNJ number.
+
+Leads are kept in `data/leads.db`, apart from `corpus.db`. Re-running a search keeps the model's tags on leads it finds again and every lead you've reviewed; unreviewed leads it no longer finds are dropped.
+
+### How good is the model's sorting?
+
+Measured on 138 Suda and Pindar-scholia citations, mined with ambiguous names included. The pilot's hand review gives the answer for 102 of them: 7 that really mean the historian (the six leads plus Arrian, Suda Ρ 217), and 95 name collisions.
+
+| Model and prompt | Known leads tagged "the historian" | Collisions tagged "someone else" |
+|---|---:|---:|
+| qwen3:14b, yes/no asked first | 0 of 7 (all "unsure") | 4 of 95 |
+| qwen3:14b, translation and "who is this?" first | 7 of 7 | 71 of 95 |
+
+With the second prompt, all 7 known leads ranked in the top 33 of 138. Most of the 22 collisions it still got wrong were Aristophanes the playwright and Demosthenes the orator, which the default name filter already removes. About 6 leads a minute on the RTX 4060 Ti. The tags are a sorting aid only: one in four "the historian" tags in this test was wrong.
+
+### From the command line
+
 ```bash
-python scripts/mine_quotations.py fetch
+python scripts/mine_quotations.py run --witness suda
+```
+
+```bash
+python scripts/triage_leads.py --model qwen3:14b
 ```
 
 ```bash
 python scripts/mine_quotations.py recall --witness athenaeus
-```
-
-```bash
-python scripts/mine_quotations.py cites --witness suda
 ```
 
 ```bash
@@ -100,7 +123,7 @@ python scripts/tlg_gap_list.py
 python scripts/quotations_selftest.py
 ```
 
-Downloads go to `data/raw/quotations` and results to `data/quotations`, both gitignored. New witness texts are added to `WITNESSES` in `scripts/mine_quotations.py`.
+Downloads go to `data/raw/quotations`, and the measuring commands write JSON to `data/quotations`, both gitignored. A new text is added as a row in `WITNESSES` in `ingest/quotations.py`.
 
 ## Sources
 

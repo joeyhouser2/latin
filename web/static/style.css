@@ -237,3 +237,18 @@ mark.f1 { background: rgba(217, 154, 27, 0.25); color: inherit; border-radius: 2
 .sbox.ok { outline: 2px solid rgba(46, 158, 91, 0.8); }
 .sbox.kmargin, .sbox.kgloss { outline: 2px solid rgba(197, 138, 26, 0.9); }
 .sbox.knoise { outline: 2px dashed rgba(120, 120, 120, 0.9); }
+
+/* ---- quotation leads ---- */
+.lead .greek { font-family: "Palatino Linotype", "Gentium Plus", "GFS Didot", "Times New Roman", serif;
+               font-size: 1.05rem; line-height: 1.6; margin: 0.45rem 0; }
+.lead .greek mark { background: var(--accent-soft); color: var(--accent); padding: 0 0.1rem; }
+.lead .tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.35rem 0 0.2rem; }
+.badge.yes { color: var(--ok); border-color: var(--ok); }
+.badge.no { color: var(--bad); border-color: var(--bad); }
+.badge.unsure { color: var(--warn); border-color: var(--warn); }
+.lead .verdicts { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-top: 0.5rem; }
+.lead .verdicts button.on { background: var(--accent); color: #fff; }
+.lead .verdicts input { flex: 1; min-width: 12rem; }
+.lead details { margin: 0.3rem 0; }
+.lead details summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; }
+.mine-texts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin: 0.4rem 0; }

@@ -4,12 +4,15 @@
 """
 import os
 import pathlib
+import re
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ingest.quotations import Witness, author_stems, find_citations, load_dfhg, norm, read_pg, read_tei, resolve_witnesses, score
+from core import lead_triage
+from core.leads import LeadStore
+from ingest.quotations import WITNESSES, Witness, author_stems, find_citations, load_dfhg, norm, read_pg, read_tei, resolve_witnesses, score
 
 PASSAGE = "πρώτην ἐπιστολὰς συντάξαι Ἄτοσσαν τὴν Περσῶν βασιλεύσασαν φησὶν Ἑλλάνικος ἐν τοῖς Περσικοῖς καὶ ἄλλα πολλὰ ἱστορεῖ"
 TEI_DOC = """<TEI xmlns="http://www.tei-c.org/ns/1.0"><text><body><div type="edition">
@@ -28,6 +31,12 @@ def main():
                                  {"witness": "XI, p. 3:"}, {"witness": "Αthenaeus I"}, {"witness": ""}])
     assert all(r["witness"].startswith("Athen") for r in records[:4]), records
     assert records[4]["witness"] == "Athenaeus I" and records[5]["witness"] == ""
+    # DFHG's typos and other "same as above" forms still count as Athenaeus.
+    chained = resolve_witnesses([{"witness": "Athenoeus XIV, p. 638"}, {"witness": "— Ibid.:"},
+                                 {"witness": "Adde XV, p. 677"}, {"witness": "Atehn. IV, p. 140"}])
+    assert all(re.search(WITNESSES["athenaeus"][3], r["witness"]) for r in chained), chained
+    for other in ("Athenagoras in Deprecat.", "Diogen. Laert. IV, 13, de Cratete Atheniensi"):
+        assert not re.search(WITNESSES["athenaeus"][3], other), other
 
     witness = Witness("test", [("ἀρχή τις " + PASSAGE + " τέλος", "1.1")])
     tokens = [norm(w) for w in PASSAGE.split()]
@@ -61,6 +70,59 @@ def main():
     assert collected[0]["dfhg_share"] > .5, collected
     lowercase = Witness("t", [("φησὶν ἑλλάνικος μόνον", "1")])
     assert find_citations(lowercase, stems, own) == []
+    assert unmatched[0]["pos"] == 10   # word index of the name in the witness
+
+    # Lead store: re-mining keeps the model's tag and your verdict.
+    with tempfile.TemporaryDirectory() as tmp:
+        store = LeadStore(os.path.join(tmp, "leads.db"))
+        lead = dict(unmatched[0], kind="citation", score=0.0)
+        reuse = {"kind": "reuse", "witness": "suda", "loc": "1.A.1", "author": "X", "fragment": "3", "score": .9,
+                 "context": "λόγος", "fragment_text": "λόγος", "dfhg_source": "Harpocr."}
+        assert store.upsert([lead, reuse]) == 2
+        first = store.search(sort="recent")["items"][-1]
+        tag = lead_triage.normalize("citation", {"same_person": "yes", "reference": "quotation", "confidence": 4,
+                                                 "claim": " he  says ", "translation": "x", "who_is": " the  historian "})
+        assert tag["claim"] == "he says" and tag["who_is"] == "the historian"
+        store.set_tag(first["id"], tag, "m", lead_triage.rank("citation", tag))
+        store.set_verdict(first["id"], "new", "BNJ?")
+        store.upsert([dict(lead, context="changed")])
+        again = store.get(first["id"])
+        assert again["tag"]["same_person"] == "yes" and again["verdict"] == "new" and again["context"] == "changed"
+        assert store.search(tag="same_person:yes")["total"] == 1 and store.search(verdict="none")["total"] == 1
+        assert store.search(tag="untagged")["items"][0]["kind"] == "reuse"
+        assert len(store.to_tag()) == 1 and len(store.to_tag(force=True)) == 2
+        assert store.stats()["by_verdict"] == {"new": 1, "none": 1}
+        # A rerun that no longer finds them drops the unreviewed lead and keeps the reviewed one, marked stale.
+        assert store.replace_witness("suda", []) == {"stored": 0, "dropped": 1, "kept_reviewed": 0}
+        assert store.replace_witness("test", []) == {"stored": 0, "dropped": 0, "kept_reviewed": 1}
+        assert store.get(first["id"])["stale"] == 1 and store.stats()["total"] == 1
+        try:
+            store.set_verdict(first["id"], "maybe")
+            raise AssertionError("bad verdict accepted")
+        except ValueError:
+            pass
+        store.close()
+
+    # The model's answers are coerced, and ranking puts collisions last.
+    junk = lead_triage.normalize("citation", {"same_person": "perhaps", "confidence": "high"})
+    assert junk["same_person"] == "unsure" and junk["reference"] == "none" and junk["confidence"] == 1
+    no = lead_triage.normalize("citation", {"same_person": "no", "reference": "quotation", "confidence": 5})
+    assert lead_triage.rank("citation", tag) > lead_triage.rank("citation", junk) > lead_triage.rank("citation", no)
+    assert lead_triage.normalize("reuse", {"relation": "close", "confidence": 3})["relation"] == "close"
+
+    # Job queue wiring.
+    from web.jobs import JOB_KINDS, describe
+    argv = JOB_KINDS["mine_quotes"].build({"witnesses": ["suda"], "include_ambiguous": True})
+    assert argv[-4:] == ["run", "--witness", "suda", "--include-ambiguous"], argv
+    assert not JOB_KINDS["mine_quotes"].uses_gpu and JOB_KINDS["triage_leads"].uses_gpu
+    assert not JOB_KINDS["triage_leads"].writes_corpus
+    try:
+        JOB_KINDS["mine_quotes"].build({"witnesses": ["nonsense"]})
+        raise AssertionError("unknown text accepted")
+    except ValueError:
+        pass
+    assert describe("triage_leads", {"model": "qwen3:14b"}) == "Sort leads: untagged leads (qwen3:14b)"
+    assert set(WITNESSES) >= {"athenaeus", "suda", "pindar_scholia"}
     print("quotations self-test passed")
 
 

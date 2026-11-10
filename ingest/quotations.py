@@ -20,6 +20,32 @@ import re
 import unicodedata
 import xml.etree.ElementTree as ET
 
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+RAW = ROOT / "data" / "raw" / "quotations"      # downloads (gitignored)
+_GH = "https://raw.githubusercontent.com"
+_PERSEUS = f"{_GH}/PerseusDL/canonical-greekLit/master/data"
+_FIRST1K = f"{_GH}/OpenGreekAndLatin/First1KGreek/master/data"
+_IA = "https://archive.org/download/{0}/{0}_djvu.txt"
+
+# The texts searched for quotations. name -> label, reader kind, {file: url}, and a
+# pattern for this text in DFHG's source field (used to tell a known source from
+# a new one). Adding a text means adding a row here.
+WITNESSES = {
+    "athenaeus": ("Athenaeus, Deipnosophists", "tei",
+                  {"athenaeus.xml": f"{_PERSEUS}/tlg0008/tlg001/tlg0008.tlg001.perseus-grc4.xml"},
+                  # DFHG's typos include Athcnaeus, Atheuaes, Atehn.; not Athenagoras or Atheniensis.
+                  r"\bAt(?:h[ce][nu](?!ag|i)|ehn|heiu)"),
+    "suda": ("Suda", "tei", {"suda.xml": f"{_FIRST1K}/tlg9010/tlg001/tlg9010.tlg001.1st1K-grc1.xml"}, r"Suid|Suda"),
+    "pindar_scholia": ("Scholia on Pindar (Drachmann)", "tei",
+                       {f"tlg5034{p}.xml": f"{_FIRST1K}/tlg5034/tlg001{p}/tlg5034.tlg001{p}.perseus-grc1.xml" for p in "abcd"},
+                       r"Schol[^|]*Pind|Pind[^|]*[Ss]chol"),
+    "procopius_catena": ("Procopius of Gaza, catena on the Octateuch (PG 87, OCR)", "pg",
+                         {"pg087_1.txt": f"{_GH}/calfa-co/Patrologia-Graeca/main/PG087_1/PG087_1_text.txt"}, r"Procop[^|]*Gaz"),
+    "stobaeus_ocr": ("Stobaeus, Anthology (archive.org OCR, 3 vols)", "plain",
+                     {f"{i}.txt": _IA.format(i) for i in ("ioannisstobaeiec00stobuoft", "joannisstobaeian03stovuoft",
+                                                          "joannisstobaeian04stovuoft")}, r"Stob"),
+}
+
 K = 3  # words per shingle; 3 keeps the shuffled-word control at about 0
 TEI = "{http://www.tei-c.org/ns/1.0}"
 WORD = re.compile(r"[Ͱ-Ͽἀ-῿]+")
@@ -27,8 +53,8 @@ WORD = re.compile(r"[Ͱ-Ͽἀ-῿]+")
 TEI_SKIP = {"note", "bibl", "teiHeader"}
 
 # Mueller's "same source as the previous fragment", which the API returns as is:
-# "Idem XII, p. 518", "[Id. v. X", or a bare "XI, p. 483".
-SAME_WITNESS = re.compile(r"^[\s\[(]*(?:(?:idem|id\.|ibid|ibidem|eadem|eodem|ead\.)|[IVXL]+\s*,\s*p\.)", re.I)
+# "Idem XII, p. 518", "[Id. v. X", "— Ibid.", "Adde XV, p. 677", or a bare "XI, p. 483".
+SAME_WITNESS = re.compile(r"^[\s\[(—–-]*(?:(?:idem|id\.|ibid|ibidem|eadem|eodem|ead\.|adde)|[IVXL]+\s*[,.]\s*p\.)", re.I)
 # Some DFHG witness fields use Greek capitals inside Latin words ("Αthenaeus").
 HOMOGLYPHS = str.maketrans("ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "ABEZHIKMNOPTYX")
 
@@ -127,6 +153,22 @@ def read_plain(paths):
     return parts
 
 
+def witness_paths(name):
+    return [RAW / "witnesses" / f for f in WITNESSES[name][2]]
+
+
+def witness_ready(name):
+    return all(p.exists() for p in witness_paths(name))
+
+
+def load_witness(name):
+    """Read a registered witness from its downloaded files."""
+    _, kind, _, _ = WITNESSES[name]
+    paths = witness_paths(name)
+    parts = read_tei(paths) if kind == "tei" else read_plain(paths) if kind == "plain" else read_pg(paths[0])
+    return Witness(name, parts)
+
+
 def resolve_witnesses(records):
     """Give each record its real witness, carrying "Idem ..." forward within an author."""
     last = ""
@@ -152,6 +194,7 @@ def load_dfhg(directory):
                 "author": r.get("author"),
                 "n": f"{r.get('fragment_number')}{r.get('fragment_letter') or ''}",
                 "witness": r["witness"],
+                "work": (r.get("work") or "").strip(),
                 "text": r.get("text") or "",
                 "toks": [n for _, n in tokenize(r.get("text") or "")],
                 "blob": norm(" ".join(str(r.get(k) or "") for k in ("text", "translation", "commentary", "note", "fragment_note"))),
@@ -256,7 +299,7 @@ def find_citations(witness, stems, fragments, before=15, after=45):
         for k in range(len(window) - K + 1):
             if tuple(window[k:k + K]) in baseline:
                 covered.update(range(k, k + K))
-        results.append({"witness": witness.name, "loc": witness.loc[i], "author": author_of[stem], "name": original,
+        results.append({"witness": witness.name, "pos": i, "loc": witness.loc[i], "author": author_of[stem], "name": original,
                         "formula": formula, "dfhg_share": round(len(covered) / max(1, len(window)), 2),
                         "context": witness.context(start, end)})
     return results

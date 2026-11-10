@@ -33,6 +33,8 @@ const state = {
   summ: { q: '', level: '', sort: '', items: [], total: 0, mode: '', note: '', stats: null,
           loading: false },
   docSumm: null,        // open document's summaries: { document, parts }
+  leads: { meta: null, items: [], total: 0, loading: false, mine: new Set(), ambiguous: false,
+           f: { kind: '', witness: '', author: '', tag: '', verdict: 'none', sort: 'default' } },
   readerOffset: 0,      // reader can open mid-document (a summary part's start)
   gpus: [],
   workerActive: true,
@@ -879,6 +881,141 @@ async function runSummarySearch(more = false) {
 }
 
 // ---------------------------------------------------------------------------
+// view: quotation leads
+// ---------------------------------------------------------------------------
+
+const LEAD_VERDICTS = [['new', 'New — not collected'], ['collected', 'Already collected'],
+                       ['not_quotation', 'Not a quotation'], ['unsure', 'Unsure']];
+const LEAD_TAGS = [['', 'any tag'], ['untagged', 'not yet sorted'],
+  ['same_person:yes', 'citation: the historian'], ['same_person:unsure', 'citation: unsure who'],
+  ['same_person:no', 'citation: someone else'], ['reference:quotation', 'citation: quotation'],
+  ['reference:paraphrase', 'citation: paraphrase'], ['reference:mention', 'citation: mention only'],
+  ['relation:verbatim', 'reuse: verbatim'], ['relation:close', 'reuse: close'],
+  ['relation:loose', 'reuse: loose'], ['relation:coincidental', 'reuse: coincidental']];
+
+/* Escape the passage, then mark the cited name (first occurrence). */
+function markName(context, name) {
+  const html = esc(context);
+  if (!name) return html;
+  const n = esc(name), i = html.indexOf(n);
+  return i < 0 ? html : html.slice(0, i) + '<mark>' + n + '</mark>' + html.slice(i + n.length);
+}
+
+function leadTags(l) {
+  const t = l.tag;
+  if (!t) return '<span class="badge" title="Press “Sort … with the local model” to have it read this">not yet sorted</span>';
+  const conf = `<span class="badge" title="the model's own confidence">confidence ${t.confidence}/5</span>`;
+  if (l.kind === 'citation') {
+    const who = { yes: 'the historian', no: 'someone else', unsure: 'unsure who' }[t.same_person];
+    return `<span class="badge ${t.same_person}" title="Does the name mean the DFHG historian?">${who}</span>
+            <span class="badge">${esc(t.reference)}</span>${conf}
+            ${t.who_is ? `<span class="muted" style="font-size:0.8rem">model: “${esc(t.who_is)}”</span>` : ''}`;
+  }
+  return `<span class="badge ${t.relation === 'coincidental' ? 'no' : 'yes'}">${esc(t.relation)}</span>
+          ${t.names_source ? `<span class="badge">credits ${esc(t.names_source)}</span>` : ''}${conf}`;
+}
+
+function leadCard(l) {
+  const what = l.kind === 'citation'
+    ? `names <b>${esc(l.author)}</b> (“${l.formula === 'book' ? 'in book…' : 'says…'}”) ·
+       <span title="share of nearby words DFHG also has">DFHG overlap ${Math.round((l.score || 0) * 100)}%</span>`
+    : `contains <b>${esc(l.author)}</b> fr. ${esc(l.fragment)} ·
+       <span title="share of the fragment's words found here">${Math.round((l.score || 0) * 100)}% of its words</span>`;
+  const t = l.tag;
+  return `
+    <div class="card lead">
+      <div class="muted" style="font-size:0.78rem">
+        <span class="badge">${l.kind}</span> ${esc(l.witness_label)} · ${esc(l.loc || '')} · ${what}</div>
+      <div class="tags">${leadTags(l)}</div>
+      ${t && t.claim ? `<p class="hook">${esc(t.claim)}</p>` : ''}
+      <div class="greek" lang="grc">${markName(l.context, l.name)}</div>
+      ${t && t.translation ? `<p class="muted" style="margin:0.2rem 0">Model's rough translation: ${esc(t.translation)}</p>` : ''}
+      ${l.kind === 'reuse' ? `<details><summary>DFHG fragment ${esc(l.fragment)} — Müller's source: ${esc(l.dfhg_source || '?')}</summary>
+          <div class="greek" lang="grc">${esc(l.fragment_text || '')}</div></details>` : ''}
+      <div class="verdicts">
+        ${LEAD_VERDICTS.map(([v, label]) => `<button class="btn ghost ${l.verdict === v ? 'on' : ''}"
+            data-lead-verdict="${l.id}" data-v="${l.verdict === v ? '' : v}"
+            title="${l.verdict === v ? 'Click again to clear' : ''}">${label}</button>`).join('')}
+        <input type="text" data-lead-note="${l.id}" value="${esc(l.verdict_note || '')}"
+               placeholder="note, e.g. BNJ 383 F 13">
+      </div>
+    </div>`;
+}
+
+function viewLeads() {
+  const L = state.leads, m = L.meta, st = m?.stats || {};
+  const sel = (key, opts) => `<select data-lfilter="${key}">${opts.map(([v, t]) =>
+    `<option value="${esc(v)}" ${L.f[key] === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  const texts = (m?.texts || []).map(x => `
+    <label class="inline"><input type="checkbox" data-mine-text="${esc(x.name)}" ${L.mine.has(x.name) ? 'checked' : ''}>
+      ${esc(x.label)} <span class="muted">(${x.downloaded ? `${num(x.leads)} leads` : 'downloads on first run'})</span></label>`).join('');
+  const reviewed = Object.entries(st.by_verdict || {}).filter(([k]) => k !== 'none')
+    .map(([k, n]) => `${num(n)} ${k.replace('_', ' ')}`).join(', ');
+  const picked = L.mine.size ? `${L.mine.size} text${L.mine.size === 1 ? '' : 's'}` : 'all texts';
+  return `
+    <h2>Leads</h2>
+    <p class="muted">Possible quotations of lost Greek historians. A text matcher compares later texts with
+      Müller's <i>Fragmenta Historicorum Graecorum</i> (DFHG) and finds two kinds of lead. A <b>citation</b>
+      names a historian next to “says” or “in book…” but matches none of his collected fragments. A
+      <b>reuse</b> is a collected fragment's wording found in a text DFHG doesn't list as its source. A local
+      model then reads each lead and tags it, which only orders this list. Missing from DFHG does not mean
+      uncollected: check Jacoby / <i>Brill's New Jacoby</i> before calling anything new.</p>
+    <div class="card">
+      <h4>Find quotations</h4>
+      <div class="mine-texts">${texts || '<span class="muted">loading…</span>'}</div>
+      <div class="row">
+        <label class="inline" title="Also search names that mostly mean someone else in these texts (Aristophanes, Demosthenes, Dionysius…). Many more false leads.">
+          <input type="checkbox" data-mine-ambig ${L.ambiguous ? 'checked' : ''}> include ambiguous names</label>
+        <button class="btn" data-leads-mine>Find quotations in ${picked}</button>
+        <button class="btn ghost" data-leads-sort ${st.untagged ? '' : 'disabled'}
+          title="A local model reads each untagged lead, a few seconds each, on a free GPU. Model: the summarizer chosen on the Jobs page.">
+          Sort ${num(st.untagged || 0)} untagged lead${st.untagged === 1 ? '' : 's'} with the local model</button>
+        ${gpuControl()}
+      </div>
+      <p class="muted" style="margin:0">Finding runs on the CPU, and the first run also downloads DFHG (about 10 minutes).
+        Re-running keeps your verdicts and the model's tags. Watch progress on the <a data-view="jobs">Jobs</a> page.</p>
+    </div>
+    <div class="row">
+      ${sel('kind', [['', 'both kinds'], ['citation', 'citations'], ['reuse', 'reuse']])}
+      ${sel('witness', [['', 'all texts'], ...(m?.texts || []).map(x => [x.name, x.label])])}
+      ${sel('tag', LEAD_TAGS)}
+      ${sel('verdict', [['none', 'not reviewed'], ['', 'any verdict'], ...LEAD_VERDICTS])}
+      <label class="inline">sort ${sel('sort', [['default', 'most promising'], ['witness', 'text'], ['author', 'author'], ['recent', 'newest']])}</label>
+      <input type="search" data-lfilter-author value="${esc(L.f.author)}" placeholder="author, e.g. ARRIANUS">
+      <span class="muted">${num(L.total)} match · ${num(st.total || 0)} leads in all${reviewed ? ` · reviewed: ${reviewed}` : ''}</span>
+    </div>
+    ${L.items.map(leadCard).join('') || `<p class="muted">${L.loading ? 'Loading…' : st.total
+        ? 'No leads match these filters.' : 'No leads yet: pick texts above and press Find quotations.'}</p>`}
+    ${L.items.length < L.total ? `<button class="btn ghost" data-leads-more ${L.loading ? 'disabled' : ''}>show more (${num(L.total - L.items.length)} left)</button>` : ''}`;
+}
+
+async function loadLeads(more = false) {
+  const L = state.leads;
+  L.loading = true;
+  try {
+    const [meta, data] = await Promise.all([
+      api('/api/leads/meta'),
+      api('/api/leads?' + new URLSearchParams({ ...L.f, limit: 30, offset: more ? L.items.length : 0 })),
+    ]);
+    L.meta = meta;
+    L.items = more ? L.items.concat(data.items) : data.items;
+    L.total = data.total;
+  } catch (e) { toast(e.message, true); }
+  L.loading = false;
+  if (state.view === 'leads') render();
+}
+
+/* Save a verdict. The card stays on screen until the next reload, even if it no
+ * longer matches the filter, so a mis-click is easy to undo. */
+async function saveLeadVerdict(id, verdict, note) {
+  const L = state.leads, lead = L.items.find(x => x.id === id);
+  const out = await api(`/api/leads/${id}/verdict`, { method: 'PUT', body: { verdict, note } });
+  if (lead) Object.assign(lead, out);
+  api('/api/leads/meta').then(m => { L.meta = m; if (state.view === 'leads' && !typing()) render(); }).catch(() => {});
+  if (!typing()) render();
+}
+
+// ---------------------------------------------------------------------------
 // view: search
 // ---------------------------------------------------------------------------
 
@@ -927,6 +1064,7 @@ function render() {
   const views = {
     library: viewLibrary, reader: viewReader, files: viewFiles,
     catalog: viewCatalog, ocr: viewOcr, scan: viewScan, jobs: viewJobs, search: viewSearch, summaries: viewSummaries,
+    leads: viewLeads,
   };
   main.innerHTML = views[state.view]();
   document.querySelectorAll('nav.side button[data-view]').forEach(b =>
@@ -959,6 +1097,7 @@ async function go(view) {
   }
   if (view === 'ocr') { render(); await loadOcr(); }
   if (view === 'summaries' && !state.summ.items.length) { render(); return runSummarySearch(); }
+  if (view === 'leads') { render(); return loadLeads(); }
   render();
 }
 
@@ -970,7 +1109,7 @@ document.addEventListener('click', async (ev) => {
     '[data-select-none],[data-translate-doc],[data-translate-range],[data-stylize-doc],' +
     '[data-more],[data-search-go],[data-summarize-doc],[data-summarize-preview],[data-summarize-selected],' +
     '[data-summarize-all],[data-summ-go],[data-summ-more],[data-rate-interest],[data-topic],[data-jump],[data-open-at],' +
-    '[data-regerman-doc],[data-regerman-selected]');
+    '[data-regerman-doc],[data-regerman-selected],[data-leads-mine],[data-leads-sort],[data-leads-more],[data-lead-verdict]');
   if (!el) return;
   const d = el.dataset;
 
@@ -1092,6 +1231,20 @@ document.addEventListener('click', async (ev) => {
     if (d.topic) { state.summ.q = d.topic; state.view = 'summaries'; return runSummarySearch(); }
     if (d.jump !== undefined) return openDoc(state.doc.id, '', parseInt(d.jump, 10));
     if (d.openAt) return openDoc(parseInt(d.openAt, 10), '', parseInt(d.offset || '0', 10));
+
+    if (d.leadsMine !== undefined) {
+      const L = state.leads;
+      return queueJob('mine_quotes', { witnesses: [...L.mine], include_ambiguous: L.ambiguous || undefined });
+    }
+    if (d.leadsSort !== undefined)
+      return queueJob('triage_leads', { model: state.opts.summary_model || undefined,
+                                        gpu: jobOpts('summarize').gpu });
+    if (d.leadsMore !== undefined) return loadLeads(true);
+    if (d.leadVerdict) {
+      const id = parseInt(d.leadVerdict, 10);
+      const note = $(`[data-lead-note="${id}"]`)?.value || '';
+      return saveLeadVerdict(id, d.v, note);
+    }
   } catch (e) { toast(e.message, true); }
 });
 
@@ -1121,6 +1274,14 @@ document.addEventListener('change', async (ev) => {
     return render();
   }
   if (d.summLevel !== undefined) { state.summ.level = el.value; return runSummarySearch(); }
+  if (d.lfilter) { state.leads.f[d.lfilter] = el.value; return loadLeads(); }
+  if (d.mineText) { el.checked ? state.leads.mine.add(d.mineText) : state.leads.mine.delete(d.mineText); return render(); }
+  if (d.mineAmbig !== undefined) { state.leads.ambiguous = el.checked; return; }
+  if (d.leadNote) {
+    const id = parseInt(d.leadNote, 10), lead = state.leads.items.find(x => x.id === id);
+    try { await saveLeadVerdict(id, lead?.verdict ?? '', el.value); } catch (e) { toast(e.message, true); }
+    return;
+  }
   if (d.summSort !== undefined) { state.summ.sort = el.value; return runSummarySearch(); }
   if (d.identSource !== undefined) { state.catalog.identSource = el.value; return; }
   if (d.opt) { state.opts[d.opt] = el.value; return; }
@@ -1167,6 +1328,7 @@ document.addEventListener('keydown', (ev) => {
   if (d.ident !== undefined) queueIngestIdentifier();
   if (d.searchQ !== undefined) { state.search.q = ev.target.value; runSearch(); }
   if (d.summQ !== undefined) { state.summ.q = ev.target.value; runSummarySearch(); }
+  if (d.lfilterAuthor !== undefined) { state.leads.f.author = ev.target.value; loadLeads(); }
 });
 
 function jobOpts(kind) {

@@ -43,12 +43,16 @@ from web.scans import Scans                                  # noqa: E402
 from core.summaries import HL_CLOSE, HL_OPEN, SummaryStore   # noqa: E402
 from core.summaries import SORTS as SUMMARY_SORTS            # noqa: E402
 from core.local_llm import OllamaClient                      # noqa: E402
+from core.leads import SORTS as LEAD_SORTS                   # noqa: E402
+from core.leads import VERDICTS, LeadStore                   # noqa: E402
+from ingest.quotations import WITNESSES, witness_ready       # noqa: E402
 
 
 view = LibraryView()
 scans = Scans()
 queue = JobQueue(corpus_db=view.db_path)
 summaries = SummaryStore()
+leads = LeadStore()
 # The shared Ollama service, used only to embed search queries (tiny, fast).
 # Summaries themselves are written by jobs on a private, GPU-pinned server.
 llm = OllamaClient(timeout=30)
@@ -66,6 +70,7 @@ async def lifespan(_app: FastAPI):
     queue.shutdown(kill_running=False)
     view.close()
     summaries.close()
+    leads.close()
 
 
 app = FastAPI(title="Latin Library", docs_url="/api/docs", redoc_url=None,
@@ -593,6 +598,54 @@ def api_summary_search(q: str = "", level: str = "", sort: str = "",
                            embed_model=stats["embed_model"], sort=sort)
     out.update({"sort": sort, "stats": stats, "note": note, "hl": [HL_OPEN, HL_CLOSE]})
     return out
+
+
+# ---------------------------------------------------------------------------
+# Quotation leads (written by "mine_quotes" and "triage_leads" jobs; reviewed here)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/leads/meta")
+def api_leads_meta() -> Dict[str, Any]:
+    """The texts that can be mined, whether each is downloaded, and lead counts."""
+    stats = leads.stats()
+    texts = [{"name": name, "label": label, "downloaded": witness_ready(name),
+              "leads": stats["by_witness"].get(name, 0)}
+             for name, (label, *_rest) in WITNESSES.items()]
+    return {"texts": texts, "stats": stats, "verdicts": list(VERDICTS), "sorts": list(LEAD_SORTS)}
+
+
+@app.get("/api/leads")
+def api_leads(kind: str = "", witness: str = "", author: str = "", verdict: str = "", tag: str = "",
+              sort: str = "default", limit: int = Query(30, le=200), offset: int = Query(0, ge=0)) -> Dict[str, Any]:
+    if kind not in ("", "citation", "reuse"):
+        raise HTTPException(400, "kind must be citation, reuse or empty")
+    if sort not in LEAD_SORTS:
+        raise HTTPException(400, f"sort must be one of {', '.join(LEAD_SORTS)}")
+    try:
+        out = leads.search(kind=kind, witness=witness, author=author, verdict=verdict, tag=tag,
+                           sort=sort, limit=limit, offset=offset)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    labels = {name: spec[0] for name, spec in WITNESSES.items()}
+    for item in out["items"]:
+        item["witness_label"] = labels.get(item["witness"], item["witness"])
+    return out
+
+
+class LeadVerdict(BaseModel):
+    verdict: str = ""        # one of core.leads.VERDICTS, or "" to clear
+    note: str = ""
+
+
+@app.put("/api/leads/{lead_id}/verdict")
+def api_lead_verdict(lead_id: int, body: LeadVerdict) -> Dict[str, Any]:
+    try:
+        lead = leads.set_verdict(lead_id, body.verdict, body.note.strip()[:1000])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if lead is None:
+        raise HTTPException(404, "no such lead")
+    return lead
 
 
 @app.get("/api/documents/{doc_id}/summaries")

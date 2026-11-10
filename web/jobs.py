@@ -102,7 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, not_before, id);
 # so one regex drives the progress bar for all of them.
 _PROGRESS_RE = re.compile(r"overall\s+([\d,]+)\s*/\s*([\d,]+)")
 # The banner printed before any work: "=== Translate pending: 12 docs, 98,765 segments ==="
-_TOTAL_RE = re.compile(r"([\d,]+)\s+(?:segments|chunks|works)")
+_TOTAL_RE = re.compile(r"([\d,]+)\s+(?:segments|chunks|works|leads|texts)")
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +272,27 @@ def _rate_argv(p: Dict[str, Any]) -> List[str]:
     return argv
 
 
+def _mine_quotes_argv(p: Dict[str, Any]) -> List[str]:
+    from ingest.quotations import WITNESSES
+    argv = [sys.executable, "-u", "scripts/mine_quotations.py", "run"]
+    for name in p.get("witnesses") or []:
+        if name not in WITNESSES:
+            raise ValueError(f"unknown text {name!r}; choose from {sorted(WITNESSES)}")
+        argv.extend(["--witness", name])
+    _flag(argv, "--include-ambiguous", p.get("include_ambiguous"))
+    return argv
+
+
+def _triage_leads_argv(p: Dict[str, Any]) -> List[str]:
+    argv = [sys.executable, "-u", "scripts/triage_leads.py"]
+    _flag(argv, "--model", p.get("model"))
+    _flag(argv, "--witness", p.get("witness"))
+    _flag(argv, "--kind", p.get("kind"))
+    _flag(argv, "--force", p.get("force"))
+    _flag(argv, "--limit", p.get("limit"))
+    return argv
+
+
 @dataclass(frozen=True)
 class KindSpec:
     build: Callable[[Dict[str, Any]], List[str]]
@@ -292,6 +313,11 @@ JOB_KINDS: Dict[str, KindSpec] = {
     # Reads and writes only data/summaries.db.
     "rate":      KindSpec(_rate_argv, "Rate summarized works for interest (local LLM)",
                           False, True),
+    # Quotation leads live in data/leads.db. Mining is plain CPU text matching
+    # (plus downloads); sorting runs a local model on a card.
+    "mine_quotes":  KindSpec(_mine_quotes_argv, "Find quotations of lost historians (DFHG)",
+                             False, False),
+    "triage_leads": KindSpec(_triage_leads_argv, "Sort quotation leads (local LLM)", False, True),
 }
 
 
@@ -894,6 +920,13 @@ def _describe(kind: str, params: Dict[str, Any]) -> str:
                  + (f" [OCR: {ocr}]" if ocr and ocr != "auto" else "")
                  + (f" pp.{params['pages']}" if params.get("pages") else ""))
         return f"Ingest {params.get('source')}: {what[:60]}{extra}"
+    if kind == "mine_quotes":
+        names = params.get("witnesses") or []
+        scope = ", ".join(names) if names else "all texts"
+        return f"Find quotations: {scope}" + (" (incl. ambiguous names)" if params.get("include_ambiguous") else "")
+    if kind == "triage_leads":
+        scope = params.get("witness") or ("all leads" if params.get("force") else "untagged leads")
+        return f"Sort leads: {scope}" + (f" ({params['model']})" if params.get("model") else "")
     if kind == "rate":
         ids = params.get("doc_ids") or []
         scope = (f"{len(ids)} docs" if ids else
