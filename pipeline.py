@@ -30,6 +30,9 @@ from core.search import SearchService, SearchHit
 # stage without its own entry (and as a fallback appended to stage-specific lists).
 TRANSLATOR_MODELS = {
     ("la", None): [("models/nllb-latin", "lat_Latn", False)],
+    # Patristic / late-antique Latin (Augustine, Tertullian, ...): the era-specific
+    # model beats the general Latin one by ~6.6 chrF on held-out patristic text.
+    ("la", "late_antique"): [("models/nllb-latin-patristic", "lat_Latn", False)],
     ("grc", None): [("models/nllb-greek-v2", "ell_Grek", True),  # normalized 4-epoch
                     ("models/nllb-greek", "ell_Grek", False)],   # fallback: v1
     # Patristic / late-antique Greek: prefer the era-specific model, then the
@@ -232,8 +235,8 @@ class Library:
 
         Cached by the *resolved model identity*, not the raw (language, stage)
         pair: several stages commonly resolve to the same underlying model
-        (e.g. every Latin stage falls back to models/nllb-latin, since
-        TRANSLATOR_MODELS has no Latin stage-specific entries), and caching by
+        (e.g. every Latin stage except late_antique falls back to
+        models/nllb-latin), and caching by
         the raw pair loaded one full redundant copy of that model per distinct
         stage seen — multiple copies of the identical model stacked in GPU
         memory at once, which starved throughput far more than it should."""
