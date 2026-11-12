@@ -236,3 +236,14 @@ If B1 or B2 lands, the method generalises immediately. Every `btv1b` item on
 Gallica — the manuscripts `ingest/gallica.py` currently has to skip — becomes
 reachable, and that is a far larger body of untranslated Latin than the printed
 material this repo has been working from.
+
+---
+
+## Status — 2026-11-12: ingested
+
+The 1794 text (OCR'd, repaired and polished in `book_creator/cache/basinio/`) is now in the
+corpus as document 14407: *Hesperis*, 13 sections (Liber 1-13), 6,944 verse-line segments,
+`language_stage=early_modern`, `translation_status=untranslated`. Script:
+`scripts/_ingest_basinio.py` (strips line-number marginalia and scan symbols; `--dry-run`
+to preview). Not yet translated; the NLLB Latin model translates this poetry poorly, so
+expect to lean on the stylizer and verse layer.
