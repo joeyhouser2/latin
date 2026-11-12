@@ -533,4 +533,23 @@ What the top of each list is:
 
 1. Lemmatize DFHG and use the lemma share in the "wording is known" check (item 4).
 2. Phase 5b (Latin compilers) is optional.
-3. Phase 6 is the user's decision. Phases 3–5 have produced checked leads but no strong uncollected fragment from printed open text. The remaining unedited Greek is in manuscripts (catenae, scholia), which needs Greek minuscule HTR.
+3. Phase 6 is the user's decision. Phases 3–5 have produced checked leads but no strong uncollected fragment from printed open text. The remaining unedited Greek is in manuscripts (catenae, scholia). The repo already has a Greek minuscule model (`greek_minuscule_s9-12`, in the scan pipeline since October); the test below measures it on catena hands.
+
+## Phase 6 test: reading a catena manuscript with the local model (2026-11-12)
+
+Phase 6 is still the user's decision; this tests whether its main premise holds. Code: `scripts/catena_htr_test.py`; results in `data/htr_bench_catena.json`.
+
+**Ground truth.** The PTA's diplomatic transcriptions of the Severian excerpt in five *Catena on Acts* manuscripts mark line breaks, and four link each page to a IIIF crop. Gallica refused the two Paris manuscripts (HTTP 403, its bot check, not bypassed). That leaves Jerusalem, Taphou 25, from the Library of Congress: 4 page crops and 97 transcribed lines. Oxford New College 58 and Barberini gr. 582 have no image links.
+
+**Scores.** Each transcribed line is matched to the model line closest to it; accents and case are removed before scoring. Coverage is the quotation matcher's share of the transcription's words found in the model's text.
+
+| Model | Line CER | Coverage |
+|---|---:|---:|
+| `greek_minuscule_s9-12_NFC` (Kraken) | 9% | 0.72 |
+| CATMuS Medieval 1.6.0 | 85% | 0.00 |
+
+Per page, the Greek model's CER is 6–11% and coverage 0.59–0.90. The errors are mostly missing accents and words run together ("σοιῥήματα", "ταεργασω"), plus a few misread letters ("ὄρτα" for ἔργα). Coverage of 0.72 is above the ~0.5 the matcher needs to find a known passage, so this hand can be mined as is, without fine-tuning.
+
+**Limits.** This is one manuscript, one hand and 97 lines. The Pal. gr. 23 benchmark gave only 40% known words, so hands differ a lot. The crops are tidy single-column pages; frame catenae, with the text surrounded by commentary, will segment worse.
+
+**What it means for phase 6.** The expensive part, building Greek minuscule HTR, turned out to exist already. The next step would be one whole catena manuscript from an open IIIF source, such as the LoC's Jerusalem and Sinai collections. Each item would be matched against Cramer and the open Fathers (phase 4's `mine_catenae.py` checks) to list the items that are in no printed edition. Labelling pages in the scan viewer is only needed if a hand reads much worse than this one. The PTA transcriptions can then serve as ready-made training lines.
