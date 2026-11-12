@@ -143,6 +143,8 @@ def main():
     assert describe("triage_leads", {"model": "qwen3:14b"}) == "Sort leads: untagged leads (qwen3:14b)"
     assert set(WITNESSES) >= {"athenaeus", "suda", "pindar_scholia", "homer_scholia"}
     scholia_checks()
+    philosophy_checks()
+    catena_checks()
     known_loci_checks()
     print("quotations self-test passed")
 
@@ -209,6 +211,55 @@ def scholia_checks():
     characters = {"μενελαοσ", "μενελαου", "ατρειδησ"}
     assert quotations.is_character("Μενελάου", "μενελα", characters)
     assert not quotations.is_character("Φερεκύδης", "φερεκυδ", characters)
+
+
+def philosophy_checks():
+    from ingest import philosophy
+    from ingest.quotations import K
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mine_philosophy
+    # A quotation of a surviving work is an unbroken run; shared phrases scattered about are not.
+    extant = "ὁ δὲ ἄνθρωπος φύσει πολιτικὸν ζῷον ἐστίν".split()
+    grams = {tuple(norm(w) for w in extant[i:i + K]) for i in range(len(extant) - K + 1)}
+    quoted = [norm(w) for w in "φησὶ γὰρ ὁ δὲ ἄνθρωπος φύσει πολιτικὸν ζῷον ἐστίν".split()]
+    scattered = [norm(w) for w in "ὁ δὲ ἄνθρωπος λέγει καὶ φύσει πολιτικὸν ἄλλο".split()]
+    assert mine_philosophy.longest_run(quoted, grams) == 7 and mine_philosophy.longest_run(scattered, grams) == 3
+    # Titles: a lost work (with crasis), an extant one, and the man Eudemus (not the dialogue).
+    for text, want in (("ὡς ἐν τοῖς Περὶ τἀγαθοῦ Ἀριστοτέλης", "lost"), ("Ἀριστοτέλης ἐν τῷ Περὶ ψυχῆς", "extant"),
+                       ("Ἀριστοτέλης καὶ Εὔδημος φασί", None), ("Ἀριστοτέλης ἐν τῷ Περὶ τῶν ἀντικειμένων", "lost")):
+        w = Witness("t", [(text, "1")])
+        pos = next(i for i, t in enumerate(w.tok) if t.startswith("αριστοτελ"))
+        assert philosophy.title_near(w, pos) == want, (text, philosophy.title_near(w, pos))
+    assert set(philosophy.PHILOSOPHERS) >= {"ARISTOTLE", "THEOPHRASTUS", "EUDEMUS"}
+    assert all(spec[4] and set(spec[4]) <= set(philosophy.PHILOSOPHERS) for spec in philosophy.BASELINES.values())
+
+
+CATENA_DOC = """<TEI xmlns="http://www.tei-c.org/ns/1.0"><text><body><div type="edition">
+<div type="textpart" subtype="chapter" n="3">
+<p>Καὶ ἀπεκρίθη ὁ Ἰησοῦς.</p>
+<p>Κυτίλλου. Ἐπειδὴ τῆς συγγενείας ἔξω τιθεὶς αὐτούς. Θεοδώρου Μονάχου. Ὥσπερ διὰ τοῦ φωτός.</p>
+<p>(Θεόδωροσ.) Ἄλλος δέ φησιν οὕτως.<note>nota editoris</note></p>
+<p>Τοῦ ἁγίου Τίτου Βοστρῶν. Ὁ οὐρανόθεν διδάσκαλος.</p>
+<p>Ἰωάννου τοῦ Δαμασκέως. Ἀλλ’ ἰστέον.</p>
+<p>Θεόδωρος δέ φησι πάλιν.</p>
+</div></div></body></text></TEI>"""
+
+
+def catena_checks():
+    from ingest.catenae import author_of, read_catena
+    assert author_of("Κυτίλλου.") == "CYRIL" and author_of("Ἀποδιναρίου.") == "APOLLINARIS"
+    assert author_of("Τοῦ") is None and author_of("λόγου") is None
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "c.xml"
+        path.write_text(CATENA_DOC, encoding="utf-8")
+        got = [(i.label, i.author, i.text.split()[0]) for i in read_catena(path, "t")]
+    assert got == [("", None, "Καὶ"),                       # the biblical lemma: no author
+                   ("Κυτίλλου.", "CYRIL", "Ἐπειδὴ"),              # OCR'd name, one letter off
+                   ("Θεοδώρου Μονάχου.", "THEODORE", "Ὥσπερ"),    # a second label mid-paragraph
+                   ("(Θεόδωροσ.)", "THEODORE", "Ἄλλος"),          # nominative in brackets; note dropped
+                   ("Τοῦ ἁγίου Τίτου Βοστρῶν.", "TITUS", "Ὁ"),
+                   ("Ἰωάννου τοῦ Δαμασκέως.", "JOHN_DAMASCENE", "Ἀλλ’"),
+                   ("", None, "Θεόδωρος")], got                        # a report, not a label
 
 
 def known_loci_checks():

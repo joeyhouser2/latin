@@ -288,3 +288,193 @@ Checking wording against *all* of Müller, as the pilot did, leaves only 3 of th
 2. Mark leads at a known passage in the Leads tab rather than dropping them.
 3. Refetch the 21 DFHG authors that failed (phase 0). Castor and Eratosthenes are among Jacoby's additions the finder can't name.
 4. For phase 3, the identity problem gets harder: commentators cite Aristotle, Plato and Theophrastus constantly. Expect to need the extant-works filter, not just a prior.
+
+## Phase 0 note (2026-11-12)
+
+The 21 DFHG authors that "failed" can't be fetched: the API's author list (613 names) doesn't include them. They are Polybius, Memnon, Diodorus, Dionysius of Halicarnassus, Heraclides Ponticus, Priscus, the Marmor Parium and others. The one listed name not yet downloaded, Leroubna, returns an empty response. The six pilot leads still need your BNJ check.
+
+## Phase 3 results (2026-11-12)
+
+**Gate: not shown to be met.** Items 1–8 are automatic and 76 discovery leads pass them. Item 9, the printed page, is a human check. A skim of the strongest candidates finds commentators retelling Aristotle's own reports and other known testimonia, not uncollected fragments. By the plan's rule, phase 4 waits on that check.
+
+**Baselines.** Only collections with usable Greek OCR can serve. Valid-word share, measured against the clean TEI already downloaded:
+
+| Collection | Source | Valid Greek words |
+|---|---|---:|
+| Wimmer, Theophrastus, *Fragmenta varia* (1866) | First1KGreek TEI | clean |
+| von Arnim, *SVF* I–II | archive.org OCR | 88–90% |
+| Diels, *Doxographi Graeci* | archive.org OCR | 79% |
+| Rose's Aristotle fragments, in the Berlin Aristotle vol. V (1870), lines 100–16,590; the rest of the volume is Rose's indexes and Bonitz's *Index* | archive.org OCR | 55% |
+
+Rose 1886, Diels's *Vorsokratiker* (every edition), *SVF* III and Usener's *Epicurea* have no Greek in archive.org's OCR: it was read as Latin letters. Lace's re-OCR (heml.mta.ca) is offline, and the Wayback Machine kept only training samples. Getting those collections means re-OCRing page images, which needs your OK for the downloads.
+
+**Texts** (First1KGreek TEI, now witnesses):
+
+- Calibration: Simplicius (Physics, De caelo, Categories, De anima) and Alexander (Metaphysics, Topics, Prior Analytics, De sensu), 1.72 million words.
+- Discovery: Michael of Ephesus, Philoponus on *Meteorology* I and *Generation of Animals*, Olympiodorus on the *Meteorology*, Asclepius, and Eustratius, 0.83 million words.
+- Surviving works for the extant filter: Aristotle (41 works), Theophrastus (14), Plato (36).
+
+Code: `ingest/philosophy.py` (baselines, the 20 philosophers' Greek name stems, lost and extant titles) and `scripts/mine_philosophy.py` (`evaluate`, `run`).
+
+**Extant filter.** "Nearby wording shares ≥15% of 3-grams with the surviving works" is useless on commentaries, because they share phrases with Aristotle everywhere. It kept 0 of the 9 Aristotle citations at passages Rose prints. Requiring an *unbroken run* of 8+ words from a surviving work kept 8 of 9 and removed 76 quotations of extant Aristotle. For Theophrastus it kept all 20 known passages.
+
+**Evaluation 2: hide a collection.** Hide the collection, mine the calibration texts, and count leads at passages the hidden collection prints:
+
+| Hidden | Citations | Leads | At hidden passages | P@20 | P@50 |
+|---|---:|---:|---:|---:|---:|
+| Wimmer only (Theophrastus) | 62 | — | — | — | — |
+| Wimmer + *Doxographi* (no Theophrastus collection at all) | 62 | 60 | 20 (33%) | 6/20 | 17/50 |
+| Rose (Aristotle) | 463 | 308 | 7 (2.3%) | 4/20 | 5/50 |
+
+- **Wimmer only:** Diels's *Doxographi* still catches 13 of the 19 hidden passages. The collections overlap heavily for Theophrastus in Simplicius.
+- **Theophrastus:** a third of the leads are passages Wimmer or Diels print. Many of the rest are probably in the modern edition (FHS&G, copyrighted), e.g. Alexander on Theophrastus's modal logic. So 33% is a lower bound. Ranking adds nothing beyond that.
+- **Aristotle:** the only strong signal is a lost-work title beside the name. 4 of the 9 such leads are Rose passages, against a 2.3% base rate. Caveat: I added *On Opposites* (Περὶ ἀντικειμένων) and the crasis form of *On the Good* (περὶ τἀγαθοῦ) to the title list after seeing the hits. Both are in Rose's catalogue, but P@20 = 4/20 is partly tuned on its own test. Formula type barely helps: "in book…" gives 6 of 78, "says" 1 of 194.
+
+**Discovery run** (0.83 million words; leads are in the Leads tab):
+
+| Checklist step | Leads | Per 100k words |
+|---|---:|---:|
+| Leads after the baseline and extant filters (items 3–5) | 255 | 30.8 |
+| Item 1: name unambiguous (not Zeno, Alexander, Strato, Heraclides, Boethus, Andronicus) | 210 | 25.4 |
+| …and the author's works aren't all extant (not Plato) | 80 | 9.7 |
+| Item 2 formula, item 7 clean TEI text, item 8 full window | 76 | 9.2 |
+
+- By author: Aristotle 65, Porphyry 6, Speusippus 3, Aristoxenus 1, Xenocrates 1.
+- 17 of them name a work.
+- A skim of those 17 and of every Speusippus and Xenocrates lead finds:
+  - Porphyry's *Isagoge*, which survives but isn't in the extant index yet.
+  - An example sentence ("τὸ μουσικὸν ἐν τῷ Ἀριστοξένῳ").
+  - Reworded references to surviving Aristotle ("ἐν τῷ περὶ βροντῆς … λόγῳ" is *Meteorology* II).
+  - Testimonia the commentators take from Aristotle himself.
+- No lost-title lead turned up in the discovery texts.
+
+**What this says.**
+
+- The machinery transfers: the baseline filter, the extant filter and lost titles each measurably help.
+- But the open baselines are thin. Rose is at 55% OCR, and there is no Diels-Kranz, Wehrli, FHS&G or Smith.
+- The less-read commentators cite few lost works by title. Most of what remains are paraphrases of extant works, which only a reader (or a much better model) can tell from a fragment.
+
+**Before phase 4, in order of value:**
+
+1. Your check of the 17 work-naming leads (item 9). They're in the Leads tab under these texts.
+2. Re-OCR Rose 1886 and Diels's *Vorsokratiker* from page images (Tesseract `grc` or Kraken). This needs a few hundred MB of images, so it needs your OK.
+3. Add Porphyry, Alexander and Plotinus to the extant index.
+4. Have the model tag "reference: quotation/paraphrase/mention" on these leads, measured against the evaluation above before trusting it.
+
+### Phase 3b: Rose and Diels re-OCR'd (2026-11-12)
+
+`scripts/reocr_scans.py` re-read the page images of three archive.org scans with Tesseract 5.3 and the `tessdata_best` Ancient Greek model:
+
+- Rose's Teubner *Aristotelis qui ferebantur librorum fragmenta* (`aristotelisquif00arisgoog`), with the Latin model;
+- Diels, *Fragmente der Vorsokratiker*, 4th edition 1922, vols. I–II (`diefragmentederv01diel_0`, `…02diel_0`), with the German model.
+
+That's 1,381 pages, about 40 minutes on 12 CPU workers. Images were fetched one page at a time and discarded; only the text is kept, in the gitignored `data/raw/quotations/philosophy/reocr/`. Models are in `models/tessdata/`.
+
+**Greek now usable.** Valid words: Rose 88%, Diels 86–87%. archive.org's own OCR of the same scans had 0%, and the Berlin printing of Rose had 55%. Both are now baselines (`rose1886`, `diels`). The philosopher list gained 18 Presocratics and sophists.
+
+**Hiding a collection, again** (calibration texts: Simplicius and Alexander):
+
+| Hidden | Citations | Leads | At hidden passages | P@20 | P@50 | P@100 |
+|---|---:|---:|---:|---:|---:|---:|
+| Diels (19 Presocratics) | 508 | 500 | 69 (13.8%) | 6/20 | 9/50 | 22/100 |
+| Rose 1886 + Rose 1870 (Aristotle) | 463 | 308 | 10 (3.2%) | 5/20 | 7/50 | 8/100 |
+
+- **Presocratics:** Simplicius is the main source of their fragments, so this is the strongest answer key so far. The citing formula ranks real passages at about twice the base rate in the top 20.
+- **Aristotle:** with the better Rose text, 5 of the 9 lost-title leads are Rose passages, so precision@20 is 25% against a 3.2% base. The finder still names only 13 of the 89 Rose passages it can locate in these texts. Most Rose fragments from commentators don't put "Aristotle says" next to the words.
+
+**Discovery, re-run with Rose 1886, Diels and Porphyry's surviving works** (Isagoge, Categories commentary, De abstinentia, Ad Marcellam, Vita Pythagorae):
+
+| Checklist step | Leads | Per 100k words |
+|---|---:|---:|
+| Leads after the baseline and extant filters (items 3–5) | 246 | 29.7 |
+| Item 1: unambiguous name | 202 | 24.4 |
+| …and the author's works aren't all extant | 72 | 8.7 |
+| Item 2: book or "says" formula | 66 | 8.0 |
+
+The new collections mark many more citations as known, 126 in Asclepius alone. By author: Aristotle 44, Anaxagoras 4, Democritus 3, Heraclitus 3, Speusippus 3, Empedocles 2, Porphyry 2, Alcmaeon 2, others 1 each.
+
+**Strong candidates** (a lost title, or a named work of a lost author): 3, and none looks new:
+
+- Olympiodorus retelling Aristotle on Anaxagoras's hail (*Meteorology* I.12; Diels prints Aristotle's version as a testimonium).
+- Porphyry on accidents in individuals in Asclepius. Probably from his lost *Categories* commentary, but that needs a check.
+- The Aristoxenus example sentence.
+
+**Gate, again: not met on present evidence.** The calibration texts now clear 25% at the top for Aristotle and the Presocratics. The open-text discovery commentators, though, produce paraphrases and known testimonia rather than uncollected fragments. The 66 checklist leads are in the Leads tab for item 9.
+
+## Phase 4 results: catenae (2026-11-12)
+
+**Text.** Cramer, *Catenae Graecorum Patrum in Novum Testamentum*, First1KGreek TEI `tlg4102`. It has 24 catenae, not 32: Matthew, Mark, Luke, John, Acts, the Pauline letters and James. 15,745 paragraphs, about 1 million words. Registered as the witness `cramer_catenae`.
+
+**Catena reader** (`ingest/catenae.py`). An item starts at a label: up to 8 words ending in a full stop, at the start of a paragraph or after a full stop, containing an author's name. Accepted around the name:
+
+- titles and sees ("Τοῦ ἁγίου Τίτου Βοστρῶν.");
+- a work after ἐκ/ἐν ("Κυρίλλου ἐκ τῶν Θησαυρῶν.");
+- nominatives in brackets ("(Θεόδωρος.)");
+- for a genitive name, a short garbled tail ("Ἰσιδώρου Πηαοτσιώρου.").
+
+Names and titles match with one letter of slack, for Cramer's misprints and OCR (Κυτίλλου, Ἀποδιναρίου, μονάκου). Inline reports ("Θεόδωρος δέ φησι") are not labels, and unlabelled paragraphs (usually the biblical lemma) get no author.
+
+Result: 3,853 labelled items (354,000 words); 3,704 have 12+ words.
+
+**Label check** (the plan asked for 50): 125 random labels checked in three samples. 124 named the right author. The miss was "Ἰωάννου τοῦ Δαμασκέως", taken as Chrysostom and now fixed. About 200 labels are still missed, mostly with badly garbled sees.
+
+**Authors labelled:**
+
+| Author | Items |
+|---|---:|
+| Chrysostom | 1,031 |
+| Cyril | 437 |
+| Theodoret | 373 |
+| Theodore (Mopsuestia / Heraclea) | 328 |
+| Ammonius | 272 |
+| Origen | 222 |
+| Severian | 197 |
+| Gennadius | 123 |
+| Photius | 90 |
+| Apollinaris | 76 |
+| Anonymous ("ἐξ ἀνεπιγράφου") | 71 |
+| Didymus | 67 |
+| Severus | 57 |
+| Oecumenius | 57 |
+| about 15 others | fewer |
+
+**Open texts to check items against** (`scripts/mine_catenae.py`):
+
+- Origen (46 files): the surviving John and Matthew commentaries, plus the editions of his catena fragments on John (Preuschen) and Luke (Rauer).
+- Eusebius, Athanasius, Gregory of Nazianzus, Irenaeus and Hippolytus.
+- Cyril (*Minor Prophets* only) and Theodoret (the *Histories* only).
+
+**No open clean text:** Chrysostom (not in First1KGreek; the Patrologia Graeca OCR repository has 33 volumes, none of them his), Theodoret on Paul, Cyril on the Gospels and Paul, and every other main catena author. The editions of their catena fragments (Reuss 1957/1966, Staab 1933) are in copyright.
+
+**Calibration: Origen.** Where an open edition covers him, nearly all his items are found (≥50% of the item's words matched together):
+
+| Catena | Origen items | Found |
+|---|---:|---:|
+| Luke (Rauer's fragments, *Homilies*) | 17 | 16 |
+| John (Preuschen's fragments, *Commentary*) | 15 | 11 |
+| Matthew | 46 | 0 |
+| Romans | 58 | 2 |
+| 1 Corinthians | 75 | 0 |
+
+For Luke and John that's 27 of 32 (84%). Matthew, Romans and 1 Corinthians have no open edition of his fragments (Klostermann's GCS; Ramsbotham and Jenkins in *JTS*), so 0 found there says nothing. Across all 3,704 items, 49 are found in an open text, and only Origen's Luke and John items can be called missing.
+
+**Leads: 8, now in the Leads tab.**
+
+- **4 Origen items in the John catena that Preuschen's fragments don't contain** in this wording (coverage 0.15–0.33):
+  - ch. 3, on the lifting up of the Son;
+  - ch. 5, on "salvation is of the Jews";
+  - ch. 16 (two items), on "you shall never wash my feet" and Judas going out into the night.
+
+  They could be passages Preuschen rejected or assigned elsewhere, or wrong labels. Preuschen (GCS 10, 1903) is public domain, so this is a quick check.
+- **1 Origen item in the Luke catena** at 0.47, just under the threshold: probably a known fragment that Cramer abridges.
+- **3 anonymous items identified:** two are Origen on Luke (in Rauer's collection), and one is Eusebius quoting Josephus from the *Church History*.
+
+**The Patristic Text Archive's manuscript catenae.** Its five `MsCat*` transcriptions are one Severian excerpt (*De fide et lege naturae*) as copied in the *Catena Andreae* on Acts. Cramer prints it: coverage is 0.36–0.72, with the manuscripts' spelling. The comparison works on diplomatic transcriptions, but this sample adds nothing.
+
+**Gate and what it means.**
+
+- Items 1, 2, 7 and 8 are given by the label, the TEI and the item.
+- Items 3–5 can only be checked for Origen on Luke and John, and that check gives the 5 leads above.
+- Most of what makes catenae valuable (Apollinaris, Theodore, Didymus, Severian, Gennadius, Photius, Ammonius) is printed in Cramer already, and collected by Reuss and Staab, so it isn't new.
+
+A printed catena is itself the edition of its fragments. What's unedited is in catena *manuscripts* Cramer didn't print. That is phase 6's decision (manuscript HTR), and the Origen result shows how such text would be checked: against the open editions, item by item.

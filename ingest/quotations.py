@@ -66,7 +66,33 @@ WITNESSES = {
                       {"homer_scholia_iliad.xml": f"{_FIRST1K}/tlg5026/tlg001/tlg5026.tlg001.1st1K-grc1.xml",
                        "homer_scholia_odyssey.xml": f"{_FIRST1K}/tlg5026/tlg007/tlg5026.tlg007.1st1K-grc1.xml"},
                       r"Schol[^|]*(?:Hom|Il\.|Od)|(?:Hom|Il\.|Odyss)[^|]*[Ss]chol"),
+    # The Aristotle commentators (phase 3; their lost philosophers are in ingest/philosophy.py).
+    # Simplicius and Alexander are the calibration texts: the most combed for fragments.
+    **{name: (label, "tei", {f"{w}.xml": f"{_FIRST1K}/{w.split('.')[0]}/{w.split('.')[1]}/{w}.1st1K-grc1.xml"
+                             for w in works}, r"Simpl" if name == "simplicius" else r"Alex[^|]*Aphr" if name == "alexander"
+                    else r"(?!x)x")
+       for name, label, works in (
+           ("simplicius", "Simplicius, on the Physics, De caelo, Categories, De anima",
+            ("tlg4013.tlg004", "tlg4013.tlg001", "tlg4013.tlg003", "tlg4013.tlg005")),
+           ("alexander", "Alexander of Aphrodisias, on the Metaphysics, Topics, Prior Analytics, De sensu",
+            ("tlg0732.tlg004", "tlg0732.tlg006", "tlg0732.tlg005", "tlg0732.tlg007")),
+           ("michael_ephesus", "Michael of Ephesus, on the Parva naturalia, Parts, Movement and Gait of animals, EN V",
+            ("tlg4034.tlg002", "tlg4034.tlg003", "tlg4034.tlg004", "tlg4034.tlg005", "tlg4034.tlg006")),
+           ("philoponus_bio", "Philoponus, on Meteorology I and Generation of animals",
+            ("tlg4015.tlg005", "tlg4015.tlg007")),
+           ("olympiodorus_meteor", "Olympiodorus, on the Meteorology", ("tlg4019.tlg003",)),
+           ("asclepius_metaph", "Asclepius, on the Metaphysics A-Z", ("tlg4018.tlg001",)),
+           ("eustratius_en", "Eustratius, on the Nicomachean Ethics I", ("tlg4031.tlg002",)),
+       )},
 }
+# Cramer's catenae on the New Testament (phase 4): items labelled by author, read by ingest/catenae.py.
+_CRAMER = ("001 002 003 004 005 006 007 008 010 011 012 013 019 020 021 022 023 024 034 035 036 037 038 040").split()
+WITNESSES["cramer_catenae"] = ("Cramer, Catenae Graecorum Patrum in Novum Testamentum (24 catenae)", "tei",
+                               {f"tlg4102.tlg{n}.xml": f"{_FIRST1K}/tlg4102/tlg{n}/tlg4102.tlg{n}.1st1K-grc1.xml"
+                                for n in _CRAMER}, r"Cramer[^|]*Caten|Caten[^|]*Cramer")
+# Texts whose citations are of philosophers (ingest/philosophy.py), not DFHG's historians.
+PHILOSOPHY_WITNESSES = ("simplicius", "alexander", "michael_ephesus", "philoponus_bio", "olympiodorus_meteor",
+                        "asclepius_metaph", "eustratius_en")
 
 # The works a commentary explains (Perseus TEI). Their characters' names are the commonest false
 # citation in scholia: "Menelaus says" is the hero, not Menelaus of Aegae. See character_names.
