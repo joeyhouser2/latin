@@ -68,6 +68,11 @@ def download(url, path):
 def fetch_witness(name):
     ok = True
     for path, url in zip(witness_paths(name), WITNESSES[name][2].values()):
+        if url is None:                        # re-OCR'd text: run scripts/reocr_scans.py to make it
+            ok = path.exists() and ok
+            if not path.exists():
+                print(f"  missing {path.name}: run scripts/reocr_scans.py {path.stem}", flush=True)
+            continue
         ok = download(url, path) and ok
     for work in COMMENTED.get(name, ()):      # the commented work, for its characters' names
         ok = download(commented_url(work), RAW / "commented" / f"{work}.xml") and ok

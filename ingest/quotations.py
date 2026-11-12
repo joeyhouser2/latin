@@ -90,6 +90,26 @@ _CRAMER = ("001 002 003 004 005 006 007 008 010 011 012 013 019 020 021 022 023 
 WITNESSES["cramer_catenae"] = ("Cramer, Catenae Graecorum Patrum in Novum Testamentum (24 catenae)", "tei",
                                {f"tlg4102.tlg{n}.xml": f"{_FIRST1K}/tlg4102/tlg{n}/tlg4102.tlg{n}.1st1K-grc1.xml"
                                 for n in _CRAMER}, r"Cramer[^|]*Caten|Caten[^|]*Cramer")
+# OCR'd Byzantine reference works (phase 5). archive.org's OCR where its Greek is usable (84-91%
+# valid words); re-OCR'd text ("reocr/...", scripts/reocr_scans.py) where it read the Greek as Latin
+# letters (Eustathius Iliad I and III) or poorly (Stephanus, Tzetzes: 66%).
+_EUSTATHIUS = {"reocr/commentariiadho01eust.txt": None, "commentariiadho02eust.txt": _IA.format("commentariiadho02eust"),
+               "reocr/commentariiadhom03eust.txt": None, "commentariiadhom04eust.txt": _IA.format("commentariiadhom04eust"),
+               "commentariiadhom01eust.txt": _IA.format("commentariiadhom01eust"),
+               "commentariiadhom02eust.txt": _IA.format("commentariiadhom02eust")}
+WITNESSES.update({
+    "eustathius": ("Eustathius, on the Iliad (I-IV) and Odyssey (I-II) (Stallbaum 1825-30; OCR)", "plain",
+                   _EUSTATHIUS, r"Eustath"),
+    "stephanus_ocr": ("Stephanus of Byzantium, Ethnica (Meineke 1849; re-OCR)", "plain",
+                      {"reocr/bub_gb_0NIPAAAAQAAJ.txt": None}, r"Steph[^|]*Byz"),
+    "tzetzes_lycophron": ("Tzetzes on Lycophron (Scheer 1908, vol. II; re-OCR)", "plain",
+                          {"reocr/lycophronisalexa02lycouoft.txt": None}, r"Tzetz[^|]*Lyc|Lyc[^|]*Tzetz"),
+    "cramer_anecdota": ("Cramer, Anecdota Graeca Oxoniensia I, III, IV and Parisiensia I-IV (OCR)", "plain",
+                        {f"{i}.txt": _IA.format(i) for i in (
+                            "anecdotagraecae01cram", "anecdotagraecaec0003cram", "anecdotagraecae02unkngoog",
+                            "anecdotagraecaec01cram", "anecdotagraecaec02cram", "anecdotagraecaec03cram",
+                            "anecdotagraecaec04cram")}, r"Cram[^|]*An|Anecd"),
+})
 # Texts whose citations are of philosophers (ingest/philosophy.py), not DFHG's historians.
 PHILOSOPHY_WITNESSES = ("simplicius", "alexander", "michael_ephesus", "philoponus_bio", "olympiodorus_meteor",
                         "asclepius_metaph", "eustratius_en")
@@ -98,6 +118,7 @@ PHILOSOPHY_WITNESSES = ("simplicius", "alexander", "michael_ephesus", "philoponu
 # citation in scholia: "Menelaus says" is the hero, not Menelaus of Aegae. See character_names.
 COMMENTED = {
     "homer_scholia": ("tlg0012.tlg001", "tlg0012.tlg002"),
+    "eustathius": ("tlg0012.tlg001", "tlg0012.tlg002"),
     "euripides_scholia": ("tlg0006.tlg002", "tlg0006.tlg003", "tlg0006.tlg005", "tlg0006.tlg006", "tlg0006.tlg007",
                           "tlg0006.tlg011", "tlg0006.tlg015", "tlg0006.tlg016", "tlg0006.tlg019"),
     "sophocles_scholia": tuple(f"tlg0011.tlg00{i}" for i in range(1, 8)),
@@ -196,13 +217,23 @@ AMBIGUOUS_NAMES = frozenset({
 def norm(token):
     """Accent- and case-free Greek, with lunate and final sigma folded."""
     decomposed = unicodedata.normalize("NFD", token)
-    bare = "".join(c for c in decomposed if unicodedata.category(c) != "Mn").lower()
+    # Mn: combining accents. Sk: free-standing breathings and the koronis (᾿, ῾, ᾽), which OCR puts
+    # before capitals ("᾿Αθήναιος") and which NFD leaves alone.
+    bare = "".join(c for c in decomposed if unicodedata.category(c) not in ("Mn", "Sk")).lower()
     return bare.replace("ϲ", "σ").replace("ς", "σ").replace("ϐ", "β").replace("ϑ", "θ")
 
 
 def tokenize(text):
     """[(original, normalized)] for each Greek word in text."""
-    return [(m.group(0), norm(m.group(0))) for m in WORD.finditer(text)]
+    out = []
+    for m in WORD.finditer(text):
+        original = _SPACING_MARKS.sub("", m.group(0))
+        if original:
+            out.append((original, norm(original)))
+    return out
+
+
+_SPACING_MARKS = re.compile(r"^[᾽᾿῾΄῍῎῏῝῞῟΅῭`´]+|[᾽᾿῾΄῍῎῏῝῞῟΅῭`´]+$")
 
 
 class Witness:
@@ -291,8 +322,13 @@ def read_plain(paths):
     return parts
 
 
+REOCR = RAW / "philosophy" / "reocr"     # scripts/reocr_scans.py writes here
+
+
 def witness_paths(name):
-    return [RAW / "witnesses" / f for f in WITNESSES[name][2]]
+    """A witness's files. "reocr/<id>.txt" is text made by scripts/reocr_scans.py, not downloaded."""
+    return [REOCR / f.split("/", 1)[1] if f.startswith("reocr/") else RAW / "witnesses" / f
+            for f in WITNESSES[name][2]]
 
 
 def witness_ready(name):
@@ -437,7 +473,8 @@ def find_citations(witness, stems, fragments, before=15, after=45):
         if not original[0].isupper():
             continue
         stem = next((s for s in by_prefix.get(normalized[:3], ()) if normalized.startswith(s)), None)
-        if not stem or len(normalized) > len(stem) + 4:
+        # A case ending adds at most 3 letters (-ου, -ει, -ους); 4 let Callias's "καλλι" take Καλλιμάχῳ.
+        if not stem or len(normalized) > len(stem) + 3:
             continue
         low, high = max(0, i - 6), i + 7
         near = witness.tok[low:high]

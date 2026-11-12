@@ -478,3 +478,59 @@ For Luke and John that's 27 of 32 (84%). Matthew, Romans and 1 Corinthians have 
 - Most of what makes catenae valuable (Apollinaris, Theodore, Didymus, Severian, Gennadius, Photius, Ammonius) is printed in Cramer already, and collected by Reuss and Staab, so it isn't new.
 
 A printed catena is itself the edition of its fragments. What's unedited is in catena *manuscripts* Cramer didn't print. That is phase 6's decision (manuscript HTR), and the Origen result shows how such text would be checked: against the open editions, item by item.
+
+## Phase 5 results: OCR'd Byzantine reference works (2026-11-12)
+
+**OCR.** Valid Greek words (3+ letters found in a vocabulary from Athenaeus and the three scholia corpora):
+
+| Text | Source | Valid words |
+|---|---|---:|
+| Eustathius on the *Iliad* I, III (Leipzig 1827–29) | Tesseract re-OCR (archive.org's own text was 0%) | 83%, 85% |
+| Eustathius on the *Iliad* II, IV; *Odyssey* I–II | archive.org OCR | 82–84% |
+| Cramer, *Anecdota Graeca* (Oxford I–IV, Paris III and two others) | archive.org OCR | 81–90% |
+| Tzetzes on Lycophron (Müller 1811, vol. II) | Tesseract re-OCR | 72% |
+| Stephanus, *Ethnica* (Meineke 1849) | Tesseract re-OCR | 63% |
+
+Stephanus scores low mainly because most of its words are place names the vocabulary lacks; samples read cleanly. *Anecdota Oxoniensia* II (55%) is left out. The re-OCR'd text is in the gitignored `data/raw/quotations/philosophy/reocr/` with the other scans, for private use only.
+
+**A tokenizer bug, fixed.** OCR puts free-standing breathings (᾿, ῾, ᾽; Unicode "Sk") before capitals: "᾿Αθήναιος". `norm()` stripped only combining accents, so such a word matched no name stem and no shingle. `tokenize()` now drops them. Effect: the matcher finds 278 of the Stephanus fragments DFHG credits to it (was 220) and 41 in Eustathius (was 34). Phase 2's numbers are unchanged (P@20 11/20, recall 30 of 76). Phase 3b's Diels test moves slightly (P@20 6/20 as before; P@50 7/50 and P@100 19/100, were 9 and 22); Aristotle is unchanged.
+
+A second fix: a name may add at most 3 letters to its stem (was 4), because Callias's stem "καλλι" took Καλλιμάχῳ. Phase 2's numbers are unchanged by this too.
+
+**The paraphrase test (the gate): met, by a small margin.** Code: `ingest/lemmas.py`, `scripts/build_lemmas.py` (Stanza's Ancient Greek lemmatizer, each distinct word once, out of context; the table has 310,591 words), `scripts/paraphrase_test.py`. Test passages: 267 places where Eustathius names Athenaeus (Ἀθήναιος with the accent on the eta, or ὁ Δειπνοσοφιστής); window 10 words before, 60 after; matched against the Athenaeus TEI.
+
+| Coverage ≥ | Surface | Lemma | Shuffled surface | Shuffled lemma |
+|---:|---:|---:|---:|---:|
+| 0.10 | 38% | 47% | 0% | 1% |
+| 0.15 | 23% | 27% | 0% | 0% |
+| 0.20 | 14% | 17% | 0% | 0% |
+| 0.25 | 8% | 10% | 0% | 0% |
+| 0.30 | 4% | 5% | 0% | 0% |
+
+Lemmas find more at every threshold and the shuffled control stays at 0–1%. The gain is small, about a fifth more passages: Eustathius's rewording changes word order and vocabulary, not just inflection. The 7 passages only lemmas find at 0.25 are all real Athenaeus (Anacreon's κελέβη, Archestratus on the sea-boar, the Peloria festival). Lemma matching isn't yet wired into the miner's "wording is known" check, because DFHG's fragments would need lemmatizing first (one more `build_lemmas.py` run).
+
+**Mining** (`scripts/mine_quotations.py run`, leads now in the Leads tab):
+
+| Text | Greek words | DFHG fragments found | Unmatched citations | Per 100k words | By an author Müller credits to this text |
+|---|---:|---:|---:|---:|---:|
+| Eustathius (with Homer's characters filtered, as for the Homer scholia) | 1.55 M | 41 | 266 | 17 | 18% |
+| Stephanus | 156 k | 278 | 294 | 188 | 89% |
+| Tzetzes on Lycophron | 99 k | 8 | 48 | 48 | 33% |
+| Cramer, *Anecdota* | 825 k | 14 | 175 | 21 | 19% |
+
+Plus 337 "reuse" leads (a DFHG fragment's wording in a text DFHG doesn't credit for it), 148 of them in the *Anecdota*: second witnesses, not new fragments.
+
+What the top of each list is:
+
+- **Stephanus**: real fragments, all collected. Androtion's *Atthis* book 3 (*FGrHist* 324), Philistus book 9 (556), Uranius's *Arabica* (675). Jacoby's Stephanus loci can't be matched passage by passage: they cite the headword ("s. Ἀκεσαμεναί"), which his OCR turns into Latin letters ("s. Yupavai"), and DFHG gives no headword. 556 and 675 are in III C, which we don't have anyway.
+- **Eustathius**: Ister, Theopompus, Critias, and many name collisions. His "ἐν τῷ …" introduces a phrase, not a book, so the book formula misfires; the names are often poets and grammarians (Euripides' *Telephus*, Hermippus the comic poet, Timon, Zenodotus, Callimachus), or extant authors (Strabo, Arrian, Porphyry).
+- **Tzetzes**: Timaeus, Hellanicus, Philostephanus, the kind of mythographic reports Jacoby collects.
+- ***Anecdota***: Pherecydes and Hellanicus from the Homeric epimerisms; collisions such as Peter the Fuller and Hegesippus the church historian.
+
+**What phase 5 shows.** The reference works are where Müller and Jacoby looked first, and the leads from them are known fragments or collisions. Lemma matching works but adds little for discovery. Without Jacoby's III A and III C, these leads can't be scored as finely as phase 2's scholia; the Müller-only prior is the ranking in the Leads tab.
+
+**Next, if wanted.**
+
+1. Lemmatize DFHG and use the lemma share in the "wording is known" check (item 4).
+2. Phase 5b (Latin compilers) is optional.
+3. Phase 6 is the user's decision. Phases 3–5 have produced checked leads but no strong uncollected fragment from printed open text. The remaining unedited Greek is in manuscripts (catenae, scholia), which needs Greek minuscule HTR.

@@ -145,6 +145,7 @@ def main():
     scholia_checks()
     philosophy_checks()
     catena_checks()
+    lemma_checks()
     known_loci_checks()
     print("quotations self-test passed")
 
@@ -260,6 +261,23 @@ def catena_checks():
                    ("Τοῦ ἁγίου Τίτου Βοστρῶν.", "TITUS", "Ὁ"),
                    ("Ἰωάννου τοῦ Δαμασκέως.", "JOHN_DAMASCENE", "Ἀλλ’"),
                    ("", None, "Θεόδωρος")], got                        # a report, not a label
+
+
+def lemma_checks():
+    from ingest.lemmas import lemma_witness, lemmatize
+    from ingest.quotations import REOCR, witness_paths
+    # A paraphrase that changes inflections matches on lemmas, not on surface forms.
+    table = {norm(f): norm(l) for f, l in (("ἔπινον", "πίνω"), ("πίνειν", "πίνω"), ("οἱ", "ὁ"), ("τοὺς", "ὁ"),
+                                            ("ἄνδρες", "ἀνήρ"), ("ἄνδρας", "ἀνήρ"), ("οἶνον", "οἶνος"), ("οἶνος", "οἶνος"))}
+    source = Witness("src", [("ἔπινον οἱ ἄνδρες οἶνον", "1")])
+    paraphrase = [norm(w) for w in "πίνειν τοὺς ἄνδρας οἶνον".split()]
+    assert score(paraphrase, source)[0] == 0.0
+    assert score(lemmatize(paraphrase, table), lemma_witness(source, table))[0] == 1.0
+    assert lemma_witness(source, table).orig == source.orig      # positions and words map back unchanged
+    assert witness_paths("stephanus_ocr")[0] == REOCR / "bub_gb_0NIPAAAAQAAJ.txt"
+    # OCR's free-standing breathings and elision marks are not part of the word.
+    from ingest.quotations import tokenize
+    assert tokenize("᾿᾿Αθήναιος δ᾽ ᾿ ϑήναιος") == [("Αθήναιος", "αθηναιοσ"), ("δ", "δ"), ("ϑήναιος", "θηναιοσ")]
 
 
 def known_loci_checks():
