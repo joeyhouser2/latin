@@ -53,7 +53,82 @@ WITNESSES = {
     "photius_lexicon": ("Photius, Lexicon (Naber, archive.org OCR, 2 vols)", "plain",
                         {f"{i}.txt": _IA.format(i) for i in ("photiipatriarch00nabegoog", "photiipatriarcha02phot")},
                         r"Phot[^|]*Lex|Lex[^|]*Phot"),
+    # Calibration texts (phase 2 of docs/quotation-mining-plan.md): the scholia where Jacoby found
+    # most of what he added to Mueller for the genealogists and mythographers.
+    "euripides_scholia": ("Scholia on Euripides (Schwartz)", "tei",
+                          {"euripides_scholia.xml": f"{_FIRST1K}/tlg5023/tlg001/tlg5023.tlg001.1st1K-grc1.xml"},
+                          r"Schol[^|]*Eur|Eur[^|]*[Ss]chol"),
+    "sophocles_scholia": ("Scholia on Sophocles (Papageorgius)", "tei",
+                          {"sophocles_scholia.xml": f"{_FIRST1K}/tlg5037/tlg004/tlg5037.tlg004.1st1K-grc1.xml"},
+                          r"Schol[^|]*Soph|Soph[^|]*[Ss]chol"),
+    # The Odyssey scholia give the verse only in each note's lemma ("5. τοῖσι δʼ Ἀθηναίη] ..."), hence tei_verse.
+    "homer_scholia": ("Scholia on the Iliad (Dindorf, Maass) and Odyssey (Dindorf)", "tei_verse",
+                      {"homer_scholia_iliad.xml": f"{_FIRST1K}/tlg5026/tlg001/tlg5026.tlg001.1st1K-grc1.xml",
+                       "homer_scholia_odyssey.xml": f"{_FIRST1K}/tlg5026/tlg007/tlg5026.tlg007.1st1K-grc1.xml"},
+                      r"Schol[^|]*(?:Hom|Il\.|Od)|(?:Hom|Il\.|Odyss)[^|]*[Ss]chol"),
 }
+
+# The works a commentary explains (Perseus TEI). Their characters' names are the commonest false
+# citation in scholia: "Menelaus says" is the hero, not Menelaus of Aegae. See character_names.
+COMMENTED = {
+    "homer_scholia": ("tlg0012.tlg001", "tlg0012.tlg002"),
+    "euripides_scholia": ("tlg0006.tlg002", "tlg0006.tlg003", "tlg0006.tlg005", "tlg0006.tlg006", "tlg0006.tlg007",
+                          "tlg0006.tlg011", "tlg0006.tlg015", "tlg0006.tlg016", "tlg0006.tlg019"),
+    "sophocles_scholia": tuple(f"tlg0011.tlg00{i}" for i in range(1, 8)),
+}
+
+
+def commented_url(work):
+    group, text = work.split(".")
+    return f"{_PERSEUS}/{group}/{text}/{work}.perseus-grc2.xml"
+
+
+def character_names(witness_name):
+    """Names in the work(s) a commentary explains: words capitalized in at least 80% of their uses."""
+    capital, total = collections.Counter(), collections.Counter()
+    for work in COMMENTED.get(witness_name, ()):
+        path = RAW / "commented" / f"{work}.xml"
+        if not path.exists():
+            continue
+        text = " ".join(t for t, _ in read_tei([path]))
+        for original, normalized in tokenize(text):
+            total[normalized] += 1
+            capital[normalized] += original[0].isupper()
+    return {w for w, n in capital.items() if n >= 2 and n >= .8 * total[w]}
+
+
+def is_character(name, stem, characters):
+    """Does a cited name belong to a character of the commented work (any inflection)?"""
+    return norm(name) in characters or any(c.startswith(stem) and len(c) <= len(stem) + 4 for c in characters)
+
+
+def name_key(name):
+    """A loose key for an author's first name across Latin and German spellings:
+    "Pherecydes", "PHEREKYDES" -> "ferecid"."""
+    s = (name.lower().split() or [""])[0]
+    for a, b in (("k", "c"), ("ai", "ae"), ("oi", "oe"), ("ou", "u"), ("y", "i"), ("ph", "f"), ("th", "t")):
+        s = s.replace(a, b)
+    return re.sub(r"(os|us|es|as|is|on|um|e)$", "", s)
+
+
+def author_priors(leads, fragments, source_pattern):
+    """Give each citation lead from one text a prior from Mueller alone: how many fragments of
+    the cited author DFHG already credits to this text, per citation lead of that author here.
+
+    A historian the text really quotes scores high (Pherecydes in the Homer scholia: 33 credited,
+    10 leads); a namesake cited constantly for something else scores near 0 (Zenodotus the Homeric
+    editor: none credited, ~200 leads). On the scholia it put 11 of Jacoby's additions to Mueller
+    in the top 20, where the local model put none (docs/quotation-mining-plan.md, phase 2). It
+    knows nothing about texts Mueller barely used, where every author scores low."""
+    credited = collections.Counter(name_key(f["author"]) for f in fragments
+                                   if f["author"] and re.search(source_pattern, f["witness"]))
+    cited = collections.Counter(name_key(c["author"]) for c in leads)
+    for c in leads:
+        key = name_key(c["author"])
+        c["credited"] = credited[key]
+        c["prior"] = round((credited[key] + .5) / (cited[key] + 1), 3)
+    return leads
+
 
 K = 3  # words per shingle; 3 keeps the shuffled-word control at about 0
 TEI = "{http://www.tei-c.org/ns/1.0}"
@@ -70,8 +145,14 @@ HOMOGLYPHS = str.maketrans("ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "ABEZHIKMNOPTYX")
 
 # Formula evidence beside a name.
 CITING_VERBS = {"φησι", "φησιν", "ιστορει", "ιστορησε", "ιστορησεν", "γραφει", "αναγραφει", "μεμνηται",
-                "ειρηκε", "ειρηκεν", "λεγει", "γεγραφε", "γεγραφεν", "μνημονευει"}
+                "ειρηκε", "ειρηκεν", "λεγει", "γεγραφε", "γεγραφεν", "μνημονευει",
+                # The scholia's own: "ὁ Τίμαιος οὕτως γράφων", "Φερεκύδης οὕτω γενεαλογεῖ", "διείλεκται Ἔφορος".
+                "γραφων", "γενεαλογει", "ιστορουσι", "ιστορουσιν", "αναγραφουσι", "αναγραφουσιν", "διειλεκται",
+                "φασι", "φασιν", "λεγουσι", "λεγουσιν"}
 BOOK_ARTICLES = {"τω", "τη", "τοισ", "ταισ"}
+# "Ἀκουσίλαος ἐν τρίτῳ Γενεαλογιῶν": a book number with no article.
+ORDINALS = {o + e for o in ("πρωτ", "δευτερ", "τριτ", "τεταρτ", "πεμπτ", "εκτ", "εβδομ", "ογδο", "ενατ", "δεκατ")
+            for e in ("ω", "η")}
 # First names of DFHG authors that mostly mean someone else (or a place) in these
 # texts. Reading all 135 unmatched Suda and Pindar-scholia citations in the pilot
 # found these were nearly all collisions: Aristophanes the playwright for the
@@ -117,32 +198,43 @@ class Witness:
         return " ".join(self.orig[max(0, start):min(len(self.orig), end)])
 
 
-def _walk_tei(el, loc, out, page):
+_LEMMA_VERSE = re.compile(r"^\s*(\d{1,4})\.\s")
+
+
+def _walk_tei(el, loc, out, page, verse=None):
     tag = el.tag.replace(TEI, "")
     if tag in TEI_SKIP:
         return
     if tag == "div" and el.get("type") == "textpart":
         loc = loc + [el.get("n") or "?"]
+        if verse is not None and el.get("subtype") == "book":
+            verse[0] = None                     # a new book starts without a verse
     # Editions cited by a standard page (Casaubon's for Athenaeus) mark it with a
     # milestone; carry it in the location so a lead can be checked against
     # collections that cite by that page. See ingest/known_loci.py.
     if tag == "milestone" and el.get("unit") == "casaubonpage" and el.get("n"):
         page[0] = el.get("n")
-    where = lambda: ".".join(loc) + (f" p.{page[0]}" if page[0] else "")   # noqa: E731
+    # Scholia that number a note only in its lemma ("5. τοῖσι δʼ Ἀθηναίη] ...").
+    if verse is not None and tag == "p" and el.text and _LEMMA_VERSE.match(el.text):
+        verse[0] = _LEMMA_VERSE.match(el.text).group(1)
+    where = lambda: (".".join(loc) + (f" p.{page[0]}" if page[0] else "")      # noqa: E731
+                     + (f" v.{verse[0]}" if verse and verse[0] else ""))
     if el.text:
         out.append((el.text, where()))
     for child in el:
-        _walk_tei(child, loc, out, page)
+        _walk_tei(child, loc, out, page, verse)
         if child.tail:
             out.append((child.tail, where()))
 
 
-def read_tei(paths):
-    """Text parts of one or more TEI editions. Several files get a part prefix: 1, 2, ..."""
+def read_tei(paths, verses=False):
+    """Text parts of one or more TEI editions. Several files get a part prefix: 1, 2, ...
+
+    ``verses``: also track the verse number that starts a scholion's lemma, as " v.N"."""
     parts = []
     for i, path in enumerate(paths, 1):
         body = ET.parse(path).getroot().find(f"{TEI}text/{TEI}body")
-        _walk_tei(body, [str(i)] if len(paths) > 1 else [], parts, [None])
+        _walk_tei(body, [str(i)] if len(paths) > 1 else [], parts, [None], [None] if verses else None)
     return parts
 
 
@@ -185,7 +277,10 @@ def load_witness(name):
     """Read a registered witness from its downloaded files."""
     _, kind, _, _ = WITNESSES[name]
     paths = witness_paths(name)
-    parts = read_tei(paths) if kind == "tei" else read_plain(paths) if kind == "plain" else read_pg(paths[0])
+    if kind in ("tei", "tei_verse"):
+        parts = read_tei(paths, verses=kind == "tei_verse")
+    else:
+        parts = read_plain(paths) if kind == "plain" else read_pg(paths[0])
     return Witness(name, parts)
 
 
@@ -256,6 +351,7 @@ def _translit(latin_name):
         s = s[1:]
     for a, b in (("ae", "e"), ("oe", "i"), ("ph", "f"), ("th", "0"), ("ch", "x"), ("rh", "r"), ("y", "i"), ("c", "k")):
         s = s.replace(a, b)
+    s = re.sub(r"(?<=[^aeiou])er$", "r", s)   # Latin Ister, Alexander = Greek Ἴστρος, Ἀλέξανδρος
     return re.sub(r"(.)\1", r"\1", re.sub(r"(us|um|es|as|is|on|a|e|o|ius)$", "", s))
 
 
@@ -275,8 +371,10 @@ def author_stems(fragments, ambiguous=AMBIGUOUS_NAMES):
             by_author[fragment["author"]].append(fragment)
     stems = {}
     for author, own in by_author.items():
+        # The stem kept is the Greek form attested in the author's own fragments, not this
+        # transliteration, so a 4-letter target (Ephorus "efor", Andron "andr") is safe.
         target = _translit(author)
-        if len(target) < 5:
+        if len(target) < 4:
             continue
         counts = collections.Counter()
         for fragment in own:
@@ -289,11 +387,17 @@ def author_stems(fragments, ambiguous=AMBIGUOUS_NAMES):
 
 
 def find_citations(witness, stems, fragments, before=15, after=45):
-    """Capitalized DFHG names beside a citing formula, with the share of nearby words DFHG also has."""
-    baseline = set()
+    """Capitalized DFHG names beside a citing formula, with the share of nearby words DFHG also has.
+
+    Two shares: ``dfhg_share`` against all of DFHG, ``author_share`` against the cited author's own
+    fragments only. A scholion citing two historians is in DFHG once for either one; for the
+    other, only ``author_share`` says whether that author's fragment was collected."""
+    baseline, own = set(), collections.defaultdict(set)
     for fragment in fragments:
         t = fragment["toks"]
-        baseline.update(tuple(t[i:i + K]) for i in range(len(t) - K + 1))
+        grams = {tuple(t[i:i + K]) for i in range(len(t) - K + 1)}
+        baseline |= grams
+        own[fragment["author"]] |= grams
     by_prefix = collections.defaultdict(list)
     author_of = {}
     for author, stem in stems.items():
@@ -312,18 +416,32 @@ def find_citations(witness, stems, fragments, before=15, after=45):
         low, high = max(0, i - 6), i + 7
         near = witness.tok[low:high]
         formula = "verb" if CITING_VERBS & set(near) else None
-        if any(a == "εν" and b in BOOK_ARTICLES for a, b in zip(near, near[1:])):
+        # The scholia's subscription "ἡ ἱστορία παρὰ Φερεκύδει": "the story is in Pherecydes".
+        if not formula and ("ιστορια" in near or (i and witness.tok[i - 1] == "παρα")):
+            formula = "story"
+        # "ὡς Φερεκύδης", and the scholia's "Ἔφορος δέ ..." setting one authority against another.
+        if not formula and i and witness.tok[i - 1] == "ωσ":
+            formula = "as"
+        if not formula and witness.tok[i + 1:i + 2] == ["δε"]:
+            formula = "but"
+        if any(a == "εν" and (b in BOOK_ARTICLES or b in ORDINALS) for a, b in zip(near, near[1:])):
             formula = "book"
         if not formula or (stem, i // 30) in seen:
             continue
         seen.add((stem, i // 30))
         start, end = max(0, i - before), min(len(witness.tok), i + after)
         window = witness.tok[start:end]
-        covered = set()
-        for k in range(len(window) - K + 1):
-            if tuple(window[k:k + K]) in baseline:
-                covered.update(range(k, k + K))
-        results.append({"witness": witness.name, "pos": i, "loc": witness.loc[i], "author": author_of[stem], "name": original,
-                        "formula": formula, "dfhg_share": round(len(covered) / max(1, len(window)), 2),
-                        "context": witness.context(start, end)})
+        author = author_of[stem]
+        results.append({"witness": witness.name, "pos": i, "loc": witness.loc[i], "author": author, "name": original,
+                        "formula": formula, "dfhg_share": _share(window, baseline),
+                        "author_share": _share(window, own[author]), "context": witness.context(start, end)})
     return results
+
+
+def _share(window, grams):
+    """Share of a window's words covered by 3-grams from ``grams``."""
+    covered = set()
+    for k in range(len(window) - K + 1):
+        if tuple(window[k:k + K]) in grams:
+            covered.update(range(k, k + K))
+    return round(len(covered) / max(1, len(window)), 2)

@@ -915,9 +915,20 @@ function leadTags(l) {
           ${t.names_source ? `<span class="badge">credits ${esc(t.names_source)}</span>` : ''}${conf}`;
 }
 
+const LEAD_FORMULAS = { book: 'in book…', verb: 'says…', story: 'the story is in…', as: 'as … says', but: '… but' };
+
+/* Why a citation ranks where it does under "most promising". */
+function leadPrior(l) {
+  if (l.kind !== 'citation' || l.prior == null) return '';
+  const n = l.credited || 0;
+  const tip = 'Müller (DFHG) already credits this text with ' + n + ' fragment' + (n === 1 ? '' : 's') +
+    ' of this author. Historians a text really quotes usually have some; a namesake cited for something else has none.';
+  return `<span class="badge ${n ? 'yes' : 'no'}" title="${esc(tip)}">${n ? `Müller has ${num(n)} from this text` : 'none in Müller from this text'}</span>`;
+}
+
 function leadCard(l) {
   const what = l.kind === 'citation'
-    ? `names <b>${esc(l.author)}</b> (“${l.formula === 'book' ? 'in book…' : 'says…'}”) ·
+    ? `names <b>${esc(l.author)}</b> (“${LEAD_FORMULAS[l.formula] || 'says…'}”) ·
        <span title="share of nearby words DFHG also has">DFHG overlap ${Math.round((l.score || 0) * 100)}%</span>`
     : `contains <b>${esc(l.author)}</b> fr. ${esc(l.fragment)} ·
        <span title="share of the fragment's words found here">${Math.round((l.score || 0) * 100)}% of its words</span>`;
@@ -926,7 +937,7 @@ function leadCard(l) {
     <div class="card lead">
       <div class="muted" style="font-size:0.78rem">
         <span class="badge">${l.kind}</span> ${esc(l.witness_label)} · ${esc(l.loc || '')} · ${what}</div>
-      <div class="tags">${leadTags(l)}</div>
+      <div class="tags">${leadPrior(l)}${leadTags(l)}</div>
       ${t && t.claim ? `<p class="hook">${esc(t.claim)}</p>` : ''}
       <div class="greek" lang="grc">${markName(l.context, l.name)}</div>
       ${t && t.translation ? `<p class="muted" style="margin:0.2rem 0">Model's rough translation: ${esc(t.translation)}</p>` : ''}
@@ -957,8 +968,9 @@ function viewLeads() {
     <p class="muted">Possible quotations of lost Greek historians. A text matcher compares later texts with
       Müller's <i>Fragmenta Historicorum Graecorum</i> (DFHG) and finds two kinds of lead. A <b>citation</b>
       names a historian next to “says” or “in book…” but matches none of his collected fragments. A
-      <b>reuse</b> is a collected fragment's wording found in a text DFHG doesn't list as its source. A local
-      model then reads each lead and tags it, which only orders this list. Missing from DFHG does not mean
+      <b>reuse</b> is a collected fragment's wording found in a text DFHG doesn't list as its source.
+      “Most promising” puts first the citations of historians Müller already shows the text quotes; a local
+      model's tags add a translation and order the rest. Missing from DFHG does not mean
       uncollected: check Jacoby / <i>Brill's New Jacoby</i> before calling anything new.</p>
     <div class="card">
       <h4>Find quotations</h4>
@@ -980,7 +992,7 @@ function viewLeads() {
       ${sel('witness', [['', 'all texts'], ...(m?.texts || []).map(x => [x.name, x.label])])}
       ${sel('tag', LEAD_TAGS)}
       ${sel('verdict', [['none', 'not reviewed'], ['', 'any verdict'], ...LEAD_VERDICTS])}
-      <label class="inline">sort ${sel('sort', [['default', 'most promising'], ['witness', 'text'], ['author', 'author'], ['recent', 'newest']])}</label>
+      <label class="inline" title="Most promising: historians this text is already known to quote come first (from Müller alone), then the rest by the model's tags. Model's rank: the model's tags only.">sort ${sel('sort', [['default', 'most promising'], ['model', "model's rank"], ['witness', 'text'], ['author', 'author'], ['recent', 'newest']])}</label>
       <input type="search" data-lfilter-author value="${esc(L.f.author)}" placeholder="author, e.g. ARRIANUS">
       <span class="muted">${num(L.total)} match · ${num(st.total || 0)} leads in all${reviewed ? ` · reviewed: ${reviewed}` : ''}</span>
     </div>

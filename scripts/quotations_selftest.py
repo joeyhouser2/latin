@@ -103,6 +103,18 @@ def main():
         assert store.replace_witness("suda", []) == {"stored": 0, "dropped": 1, "kept_reviewed": 0}
         assert store.replace_witness("test", []) == {"stored": 0, "dropped": 0, "kept_reviewed": 1}
         assert store.get(first["id"])["stale"] == 1 and store.stats()["total"] == 1
+        # "Most promising" puts citations with a high Mueller-only prior first, whatever the model said.
+        from ingest.quotations import author_priors
+        known = [fragment("PHERECYDES", "λόγος"), fragment("PHERECYDES", "λόγος")]
+        for f in known:
+            f["witness"] = "Schol. Hom. Il. A, 1"
+        cites = [dict(lead, author="PHERECYDES", pos=1), dict(lead, author="ZENODOTUS", pos=2),
+                 dict(lead, author="ZENODOTUS", pos=3)]
+        author_priors(cites, known, WITNESSES["homer_scholia"][3])
+        assert cites[0]["credited"] == 2 and cites[0]["prior"] > cites[1]["prior"], cites
+        store.upsert([dict(c, witness="homer_scholia") for c in cites])
+        promising = [r["author"] for r in store.search(witness="homer_scholia")["items"]]
+        assert promising[0] == "PHERECYDES", promising
         try:
             store.set_verdict(first["id"], "maybe")
             raise AssertionError("bad verdict accepted")
@@ -129,7 +141,8 @@ def main():
     except ValueError:
         pass
     assert describe("triage_leads", {"model": "qwen3:14b"}) == "Sort leads: untagged leads (qwen3:14b)"
-    assert set(WITNESSES) >= {"athenaeus", "suda", "pindar_scholia"}
+    assert set(WITNESSES) >= {"athenaeus", "suda", "pindar_scholia", "homer_scholia"}
+    scholia_checks()
     known_loci_checks()
     print("quotations self-test passed")
 
@@ -160,6 +173,44 @@ JACOBY_III_PAGE = """298. AUTESION s.III/IIs ?
 1 (-) ATHEN. 4, 31 p. 148 F—149 C: λέγει"""
 
 
+SCHOLIA_DOC = """<TEI xmlns="http://www.tei-c.org/ns/1.0"><text><body><div type="edition">
+<div type="textpart" subtype="book" n="5"><div type="textpart" subtype="section" n="1">
+<p>1. Τιθωνοῖο] Τιθωνὸς Λαομέδοντος παῖς</p><p>ἄλλως ἠὼς ἡ πρωΐα</p></div>
+<div type="textpart" subtype="section" n="2"><p>ἔτι λόγος</p><p>7. ἐκ τῆς Ἰλιάδος</p></div></div>
+</div></body></text></TEI>"""
+
+
+def scholia_checks():
+    from ingest import quotations
+    from ingest.known_loci import witness_locus
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "od.xml"
+        path.write_text(SCHOLIA_DOC, encoding="utf-8")
+        parts = read_tei([path], verses=True)
+        # The lemma's verse carries over a section break, until the next lemma.
+        assert [loc for text, loc in parts if text.strip()] == ["5.1 v.1", "5.1 v.1", "5.2 v.1", "5.2 v.7"], parts
+        assert [loc for text, loc in read_tei([path]) if text.strip()][0] == "5.1"
+    homer = Witness("homer_scholia", [("ἡ ἱστορία παρὰ Φερεκύδει", "2.1.5.3 v.257"), ("λόγος", "1.2.20.96 v.307")])
+    assert witness_locus(homer, 0) == "Od.5.257" and witness_locus(homer, 4) == "Il.20.307"
+    soph = Witness("sophocles_scholia", [("λόγος", "7.1053")])
+    assert witness_locus(soph, 0) == "OC.1053"
+    # Short names and Latin -er names get a stem from the author's own fragments.
+    assert quotations._translit("ISTER") == "istr" and quotations._translit("EPHORUS") == "efor"
+    own = [fragment("EPHORUS", "ὡς Ἔφορος ἱστορεῖ"), fragment("EPHORUS", "φησὶν Ἔφορος ἐν τῇ")]
+    assert author_stems(own, frozenset()) == {"EPHORUS": "εφοροσ"}
+    # "ἡ ἱστορία παρὰ Φερεκύδει" is a citation; wording is checked against the cited author's own fragments.
+    pher = [fragment("PHERECYDES", "Φερεκύδης φησὶν ἐν τῇ"), fragment("PHERECYDES", "ὡς Φερεκύδης λέγει")]
+    other = fragment("HELLANICUS", "ὁ Τιθωνὸς Λαομέδοντος παῖς ἦν")
+    text = Witness("t", [("ὁ Τιθωνὸς Λαομέδοντος παῖς ἦν ἡ ἱστορία παρὰ Φερεκύδει", "1")])
+    found = find_citations(text, author_stems(pher, frozenset()), pher + [other])
+    assert len(found) == 1 and found[0]["formula"] == "story", found
+    assert found[0]["dfhg_share"] > .3 and found[0]["author_share"] == 0, found
+    # Names of the commented work's characters, in any inflection.
+    characters = {"μενελαοσ", "μενελαου", "ατρειδησ"}
+    assert quotations.is_character("Μενελάου", "μενελα", characters)
+    assert not quotations.is_character("Φερεκύδης", "φερεκυδ", characters)
+
+
 def known_loci_checks():
     from ingest.known_loci import from_dfhg, from_jacoby, near, parse_locus
     got = [(r.author, r.fragment, r.witness, r.locus) for r in from_jacoby(JACOBY_III_PAGE, "test")]
@@ -169,7 +220,7 @@ def known_loci_checks():
     rows = from_jacoby(JACOBY_PAGE, "test")
     got = [(r.author, r.fragment, r.witness, r.locus) for r in rows]
     assert got == [("3 PHEREKYDES VON ATHEN", "3a", "pindar_scholia", "P.3.59"),
-                   ("3 PHEREKYDES VON ATHEN", "3b", "euripides_scholia", None),
+                   ("3 PHEREKYDES VON ATHEN", "3b", "euripides_scholia", "Alc.1"),
                    ("3 PHEREKYDES VON ATHEN", "4", "athenaeus", "542a"),
                    ("3 PHEREKYDES VON ATHEN", "5", "stephanus", None),
                    ("3 PHEREKYDES VON ATHEN", "13", "stephanus", None)], got
@@ -180,6 +231,23 @@ def known_loci_checks():
                       ("Schol. Pindari Olymp. XIII, vs. 32:", "O.13.32")):
         assert parse_locus("pindar_scholia", raw) == want, raw
     assert parse_locus("suda", "Suidas v. Ὅμηρος:") == "ομηροσ"
+    for witness, raw, want in (("euripides_scholia", "Schol. Eurip. Orest. 1645:", "Or.1645"),
+                               ("euripides_scholia", "SCHOL. EURIP, Hek. 123", "Hec.123"),
+                               ("euripides_scholia", "Schol. Eur. Phoen. 670:", "Ph.670"),
+                               ("sophocles_scholia", "ScHoL. SOPHORL. O. K. 1053", "OC.1053"),
+                               ("sophocles_scholia", "Schol. Soph. Oed. Col. v. 489, ἄπυστα:", "OC.489"),
+                               ("sophocles_scholia", "Schol. Soph. OEd. Tyr. 21:", "OT.21"),
+                               ("sophocles_scholia", "Schol. Sophocl. Trachin. 253:", "Tr.253"),
+                               ("homer_scholia", "Schol. Hom. Il. XIV, 119:", "Il.14.119"),
+                               ("homer_scholia", "Schol. Homer. Il. Λ, 674:", "Il.11.674"),
+                               ("homer_scholia", "Schol. Homer. Odyss. O, 223:", "Od.15.223"),
+                               ("homer_scholia", "SCHOL. A HOMER. I!. T 116", "Il.19.116")):
+        assert parse_locus(witness, raw) == want, (raw, parse_locus(witness, raw))
+    # Jacoby's Homer books are unreadable OCR: any book, same poem and line.
+    jacoby_homer = from_jacoby("12. HELLANIKOS\n7 (5) SCHOL. A HOM. Il. T 116: ὡς\n", "test")
+    assert [r.locus for r in jacoby_homer] == ["Il.?.116"], jacoby_homer
+    assert near("homer_scholia", "Il.?.116", "Il.19.118", 3) and not near("homer_scholia", "Il.?.116", "Od.19.116", 3)
+    assert near("euripides_scholia", "Ph.159", "Ph.161", 2) and not near("euripides_scholia", "Ph.159", "Or.159", 2)
     assert near("athenaeus", "542f", "543a", 1) and not near("athenaeus", "542a", "542c", 1)
     assert near("pindar_scholia", "O.9.104", "O.9.106", 2) and not near("pindar_scholia", "O.9.104", "P.9.104", 2)
     dfhg = from_dfhg([{"author": "X", "n": "1", "witness": "Athen. XII, p. 527, F | Idem XIV, p. 649, F:"}])

@@ -6,19 +6,24 @@ sources and maps our own texts' locations onto the same scheme.
 
   FHG       DFHG's source field for each fragment ("Athen. XII, p. 527, F").
   FGrHist   the source line printed above each fragment in Jacoby's *Die
-            Fragmente der griechischen Historiker* I-II (1923-30), read from the
-            Vanderbilt scans on archive.org. Their Greek OCR is unusable (it came
-            out as Latin letters), but these lines are in Latin script and read
-            well, e.g. "4 (8) ATHEN. XII 59 p. 542 A: ...". The bracket is the
-            matching FHG reference, so the line also gives a concordance.
+            Fragmente der griechischen Historiker* I, II and III B, read from the
+            open archive.org scans (see scripts/build_known_loci.py). Their Greek
+            OCR is poor (the Vanderbilt scans read it as Latin letters), but these
+            lines are in Latin script and read well, e.g. "4 (8) ATHEN. XII 59 p.
+            542 A: ...". The bracket is the matching FHG reference, so the line
+            also gives a concordance.
 
-Only parts I-II: they are public domain in the US. Part III (1940-58) is not.
+The 1950s volumes are in copyright: what is built from them is for private
+research use and is not to be published.
 
 Passages are normalised per text, in the scheme that text's editors cite:
 
-  athenaeus        Casaubon page and letter      "542a"
-  suda             headword, accent-free          "ομηροσ"
-  pindar_scholia   ode, poem, line                "O.7.24"
+  athenaeus          Casaubon page and letter      "542a"
+  suda               headword, accent-free          "ομηροσ"
+  pindar_scholia     ode, poem, line                "O.7.24"
+  euripides_scholia  play, line                     "Ph.1116"
+  sophocles_scholia  play, line                     "OC.1053"
+  homer_scholia      poem, book, line               "Il.14.119" ("?" for an unreadable book)
 
 Other texts are kept with their raw citation (``locus`` None) so the table
 still says which sources a collection used. Citation schemes differ between
@@ -28,10 +33,11 @@ numbers in our text), so matching takes a tolerance; see ``near``.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import asdict, dataclass
 from typing import Dict, Iterable, List, Optional
 
-from ingest.quotations import norm
+from ingest.quotations import name_key, norm   # noqa: F401  (name_key is used here and re-exported)
 
 # OCR of "SCHOL." alone comes out as ScHoL., Scuor., Schon., Scnor., Scuou.
 _SCHOL = r"S[cC][hHuUnN][oO0][lLrRuUnN]\.?"
@@ -111,7 +117,62 @@ def parse_locus(witness: Optional[str], raw: str) -> Optional[str]:
     if witness == "suda":
         m = re.search(r"\b(?:s\.\s*[vV]\.|s\.|v\.)\s*[᾽᾿’']?([Ͱ-Ͽἀ-῿][^\s:,;.*]*)", raw)
         return norm(m.group(1)) if m else None
+    if witness == "euripides_scholia":
+        m = re.search(r"EUR\w*[.,]?\s*(?:ad\s+)?([A-Za-z]+)\.?\s*(?:v\.\s*)?(\d{1,4})", raw, re.I)
+        play = m and next((code for prefix, code in _EURIPIDES if m.group(1).lower().startswith(prefix)), None)
+        return f"{play}.{int(m.group(2))}" if play else None
+    if witness == "sophocles_scholia":
+        m = re.search(r"SOPH\w*\.?\s*(?:ad\s+)?([A-Za-z. ]{1,20}?)\s*(?:v\.\s*)?(\d{1,4})", raw, re.I)
+        play = m and _sophocles_play(m.group(1))
+        return f"{play}.{int(m.group(2))}" if play else None
+    if witness == "homer_scholia":
+        m = re.search(r"\b(Il|II|Tl|Od|Odyss)\w*\.?\s*(?:([^\s,.]{1,5})\s*[,.]?\s*)?(\d{1,4})\b", raw, re.I)
+        # Jacoby's OCR garbles "Il." after HOM. ("I!.", "1].", "11.", "N."); "Od." comes through.
+        m = m or re.search(r"H[oO]M\w*\.?\s*([^\sOo]\S{0,2})\s+([^\s,.]{1,5})\s*[,.]?\s*(\d{1,4})\b", raw)
+        if not m:
+            return None
+        poem ="Od" if m.group(1).lower().startswith("od") else "Il"
+        return f"{poem}.{_homer_book(m.group(2) or '')}.{int(m.group(3))}"
     return None
+
+
+# Euripides plays as Jacoby and Mueller abbreviate them -> the code in our edition's
+# "sch_Hec" divisions. Longer prefixes first.
+_EURIPIDES = (("alk", "Alc"), ("alc", "Alc"), ("andr", "Andr"), ("hek", "Hec"), ("hec", "Hec"), ("hipp", "Hipp"),
+              ("med", "Med"), ("or", "Or"), ("phoe", "Ph"), ("ph", "Ph"), ("rh", "Rh"), ("tro", "Tr"), ("tr", "Tr"))
+# Our Sophocles scholia (Papageorgius) number the plays 1-7 in this order.
+SOPHOCLES_ORDER = ("Aj", "El", "OT", "Ant", "Tr", "Ph", "OC")
+
+
+def _sophocles_play(raw: str) -> Optional[str]:
+    """ "OK", "O. K.", "Oed. Col.", "OEdip. Colon." -> "OC"; "OT", "Oed. Tyr." -> "OT"; "Trach." -> "Tr" ..."""
+    s = re.sub(r"[^a-z]", "", raw.lower())
+    if s in ("ok", "oc") or re.match(r"oe?d(?:ip(?:us)?)?(?:c|k)", s):
+        return "OC"
+    if s in ("ot", "or") or re.match(r"oe?d(?:ip(?:us)?)?(?:t|r)", s):
+        return "OT"
+    for prefix, code in (("tr", "Tr"), ("el", "El"), ("ai", "Aj"), ("aj", "Aj"), ("ant", "Ant"), ("ph", "Ph")):
+        if s.startswith(prefix):
+            return code
+    return None
+
+
+# Homer's books are cited by Greek letter (capital for the Iliad, small for the Odyssey, both
+# α-ω = 1-24), or roman numerals. Jacoby's OCR prints capitals as their Latin look-alikes; any
+# other reading ("Il. 2 343": Σ? Ζ?) is unknown, "?", and matches any book.
+_GREEK_BOOKS = "αβγδεζηθικλμνξοπρστυφχψω"
+_LATIN_LOOKALIKE = {"a": 1, "b": 2, "e": 5, "z": 6, "h": 7, "i": 9, "k": 10, "m": 12, "n": 13, "o": 15, "p": 17,
+                    "t": 19, "y": 20, "u": 20, "x": 22}
+
+
+def _homer_book(raw: str) -> str:
+    raw = "".join(c for c in unicodedata.normalize("NFD", raw.strip()) if not unicodedata.combining(c))
+    if len(raw) == 1 and raw.lower() in _GREEK_BOOKS:
+        return str(_GREEK_BOOKS.index(raw.lower()) + 1)
+    if len(raw) == 1 and raw.lower() in _LATIN_LOOKALIKE:
+        return str(_LATIN_LOOKALIKE[raw.lower()])
+    n = roman(raw)
+    return str(n) if n and n <= 24 else "?"
 
 
 def _last_segment(witness_field: str) -> str:
@@ -186,6 +247,9 @@ def from_jacoby(text: str, source: str) -> List[Locus]:
         locus = parse_locus(name, src)
         if name == "athenaeus" and not _ATHENAEUS_SOURCE.match(src):
             locus = None
+        if name == "homer_scholia" and locus:      # Jacoby's Greek book letters don't survive OCR (δ -> ὃ, Γ -> T)
+            poem, _, line = locus.split(".")
+            locus = f"{poem}.?.{line}"
         out.append(Locus("FGrHist", author, f"{n}{letter or ''}", name, locus, src[:120],
                          (conc or "").strip()))
 
@@ -265,7 +329,40 @@ def witness_locus(witness, pos: int, headwords: Optional[Dict[str, str]] = None)
         return None
     if witness.name == "suda":
         return (headwords or suda_headwords(witness)).get(loc)
+    if witness.name == "euripides_scholia":
+        # loc = "sch_Hec.123[.part]". One division (Alcestis) has no name; it follows "arg_Alc".
+        work, _, rest = loc.partition(".")
+        if work == "?":
+            work = "sch_" + _unnamed_euripides(witness).get(pos, "")
+        line = re.match(r"\d+", rest)
+        return f"{work[4:]}.{int(line.group())}" if work.startswith("sch_") and len(work) > 4 and line else None
+    if witness.name == "sophocles_scholia":
+        play, _, rest = loc.partition(".")                  # "7.1053" = play 7 (OC), line 1053
+        line = re.match(r"\d+", rest)
+        return f"{SOPHOCLES_ORDER[int(play) - 1]}.{int(line.group())}" if play.isdigit() and line else None
+    if witness.name == "homer_scholia":
+        # "file.volume.book.section v.verse": file 1 the Iliad, 2 the Odyssey. The section is a running
+        # number, not the line; the verse comes from the scholion's lemma ("307. ...").
+        parts = loc.split(" ")[0].split(".")
+        verse = re.search(r" v\.(\d+)", loc)
+        if len(parts) < 3 or not parts[2].isdigit() or not verse:
+            return None
+        return f"{'Il' if parts[0] == '1' else 'Od'}.{int(parts[2])}.{int(verse.group(1))}"
     return None
+
+
+def _unnamed_euripides(witness) -> Dict[int, str]:
+    """Word position -> play, for the one unnamed division of the Euripides scholia (cached)."""
+    if not hasattr(witness, "_unnamed_plays"):
+        plays, last = {}, ""
+        for i, loc in enumerate(witness.loc):
+            work = loc.partition(".")[0]
+            if work.startswith("arg_"):
+                last = work[4:]
+            elif work == "?":
+                plays[i] = last
+        witness._unnamed_plays = plays
+    return witness._unnamed_plays
 
 
 def suda_headwords(witness) -> Dict[str, str]:
@@ -293,10 +390,26 @@ def near(witness: str, a: Optional[str], b: Optional[str], tolerance: int = 0) -
     if witness == "athenaeus":
         x, y = _athenaeus_index(a), _athenaeus_index(b)
         return x is not None and y is not None and abs(x - y) <= tolerance
-    if witness == "pindar_scholia":
+    if witness in ("pindar_scholia", "euripides_scholia", "sophocles_scholia", "homer_scholia"):
+        # "work[.book].line": the same work and book ("?" = unreadable book, matches any), lines close.
         x, y = a.split("."), b.split(".")
-        return x[:2] == y[:2] and abs(int(x[2]) - int(y[2])) <= tolerance
+        if len(x) != len(y) or not (x[-1].isdigit() and y[-1].isdigit()):
+            return False
+        same = all(p == q or "?" in (p, q) for p, q in zip(x[:-1], y[:-1]))
+        return same and abs(int(x[-1]) - int(y[-1])) <= tolerance
     return False
+
+
+# How far apart two citations of one passage can be, in each text's units: Casaubon sections;
+# lines or scholion numbers (editions number scholia differently: Mueller cites the Euripides
+# scholia by older line numbers, 5-20 off Schwartz's); none for Suda headwords.
+TOLERANCE = {"athenaeus": 1, "pindar_scholia": 2, "suda": 0, "euripides_scholia": 10, "sophocles_scholia": 10,
+             "homer_scholia": 3}
+
+
+def table_author(row: Locus) -> str:
+    """Name key of a table row's author: "244 APOLLODOROS V. ATHEN" and "APOLLODORUS" both give "apollodor"."""
+    return name_key(re.sub(r"^\d+\s+", "", row.author))
 
 
 def as_rows(loci: Iterable[Locus]) -> List[Dict]:

@@ -215,3 +215,76 @@ That's about 85 passages of "collected after Müller", still small for phase 2's
 
 - Use the ~85 passages as a small answer key, and report precision with its confidence interval rather than as a single number.
 - Add Suda headwords from the fragment texts themselves (most Suda fragments begin with the headword), which needs no new source.
+
+## Phase 2 results (2026-11-12)
+
+**Gate met: precision@20 is 55% (11 of 20) against the 25% target**, but only with a ranking the plan didn't specify (below), and on a small answer key.
+
+**What ran.** These are all First1KGreek TEI, now registered as witnesses:
+
+- Euripides scholia: Schwartz 1887, nine plays.
+- Sophocles scholia: Papageorgius 1888, seven plays.
+- Iliad scholia (Dindorf and Maass) and Odyssey scholia (Dindorf).
+
+Dindorf's separate Euripides files repeat plays Schwartz covers and are not used. Passages are mapped to play and line, or to poem, book and line. The Homer verse is taken from each scholion's lemma ("307. …"), because the TEI's section numbers are running counts, not lines.
+
+**Known-passages table** for these texts: Jacoby's Homer books don't survive OCR, so they match any book. Share of fragments Müller credits to each text whose passage is in the table (DFHG + *FGrHist*):
+
+| Text | Coverage |
+|---|---:|
+| Euripides scholia | 91% |
+| Sophocles scholia | 100% |
+| Homer scholia | 77% |
+
+Line tolerance is ±10 for the tragedies, because Müller cites older line numbers 5–20 off Schwartz's, and ±3 for Homer. Most of Homer's misses are wrongly divided books, in Müller or in the TEI.
+
+**Evaluation 1** (`scripts/evaluate_novelty.py`): the baseline is Müller only. A lead counts as a Jacoby addition if Jacoby prints a fragment of that author at that passage and Müller doesn't. "Judged" leads are those whose author is in our *FGrHist* volumes (I, II, III B).
+
+**Answer key.** Jacoby has 76 additions in these scholia by authors the finder can name. How many each version of the finder recovers:
+
+| Step | Named | Survive as leads |
+|---|---:|---:|
+| Pilot finder (first run) | 28 | 3 |
+| + 4-letter and "-er" name stems (Ephoros, Istros, Timaios); formulas "ἡ ἱστορία παρὰ X", "ὡς X", "X δέ", "ἐν τρίτῳ", γράφων/γενεαλογεῖ/ἱστοροῦσι | 45 | 3 |
+| + wording checked against the cited author's fragments only | 45 | **30** |
+
+The 31 still unnamed are mostly scholia not in our editions at the passage Jacoby cites. These are probably the Homeric D-scholia, which Dindorf doesn't print, or differently numbered notes.
+
+**Each filter, on the 1,131 citations found:**
+
+| Filter | Removed | Jacoby additions among them |
+|---|---:|---:|
+| Nearby wording in Müller for the *cited author* (≥10%) | 175 | 20 (Müller has the author's wording here under a passage cited differently, so arguably known) |
+| Name is a character of the commented work (Menelaus, Antenor, Idomeneus…), from the Perseus texts of the Iliad, Odyssey and plays | 126 | 0 |
+| Passage in Müller for this author (known-passages table) | 19 | 0 |
+| Left: new to Müller | 811 (720 judged, 32 of them Jacoby additions, 4.4%) | |
+
+Checking wording against *all* of Müller, as the pilot did, leaves only 3 of the 76 additions. A scholion citing two historians counts as "known" if Müller has either one's fragment from it.
+
+**Ranking** (precision among judged leads):
+
+| Ranking | P@20 | P@50 | P@100 |
+|---|---:|---:|---:|
+| Local model (qwen3:14b, "same person?" then quotation type) | 0/20 | 1/50 | 2/100 |
+| Citing formula ("in book N" > "the story is in" > "says" > "as" > "X but") | 1/20 | 2/50 | 3/100 |
+| **Müller-only prior**: fragments Müller credits to this text for the author, per lead of that author | **11/20** | **22/50** | **29/100** |
+
+- **The model can't tell homonyms apart here.** It answers "same person: yes" for Zenodotus the Homeric editor as the historian Zenodotus of Troezen, and for Porphyry's *Homeric Questions*. Its "yes" leads are Jacoby additions 4.8% of the time (25 of 519), against 3.4% (5 of 148) for its "no". Sorting all 830 scholia citations took about 80 minutes on the RTX 4060 Ti, for no gain.
+- **Formula type doesn't predict a real addition either.** "In book N" gives 4 of 71, "says" 21 of 464.
+- **Why the prior works:** a historian a text really quotes already has fragments from it in Müller. Pherecydes has 33 from the Homer scholia and 10 leads. A homonym cited constantly for something else has none: Zenodotus has 0 credited and about 200 leads.
+
+**Caveats.**
+
+- The answer key is small (32 additions among the judged leads), so 55% has a wide margin, roughly 30–75%.
+- The top 20 is nearly all Pherecydes and Hellanicus. The prior ranks authors, not passages, and Jacoby's additions in these scholia are concentrated on exactly those genealogists.
+- Some "misses" in the top 20 are probably real: Pherecydes at Il. 14.323/324 is one scholion counted twice, and Jacoby's OCR loses source lines. So the true precision is likely somewhat higher.
+- In discovery texts, where Müller credits few fragments, the prior has little to go on. It should be combined with something else there, not relied on alone.
+
+**What changed in mining** (`scripts/mine_quotations.py`, all texts): wording is checked against the cited author's fragments, character names of the commented work are dropped, and there are new formulas and short stems. Re-mining the older texts will produce more leads than before.
+
+**Next.**
+
+1. ~~Put the prior into the Leads tab's sort.~~ Done 2026-11-12. Mining stores the prior with each citation lead (`ingest.quotations.author_priors`). "Most promising" now orders citations by it, and the card says how many fragments Müller credits to the text for that author. The model's ordering is still available as "model's rank". The prior is per text: Athenaeus's values are much larger than the scholia's, so compare leads within one text.
+2. Mark leads at a known passage in the Leads tab rather than dropping them.
+3. Refetch the 21 DFHG authors that failed (phase 0). Castor and Eratosthenes are among Jacoby's additions the finder can't name.
+4. For phase 3, the identity problem gets harder: commentators cite Aristotle, Plato and Theophrastus constantly. Expect to need the extant-works filter, not just a prior.

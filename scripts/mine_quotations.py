@@ -34,8 +34,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core.leads import LeadStore                                      # noqa: E402
-from ingest.quotations import (AMBIGUOUS_NAMES, RAW, WITNESSES, author_stems, find_citations,  # noqa: E402
-                               load_dfhg, load_witness, norm, score, tokenize, witness_paths)
+from ingest.quotations import (AMBIGUOUS_NAMES, COMMENTED, RAW, WITNESSES, author_priors, author_stems,  # noqa: E402
+                               character_names, commented_url, find_citations, is_character, load_dfhg,
+                               load_witness, norm, score, tokenize, witness_paths)
 
 OUT = ROOT / "data" / "quotations"
 HEADERS = {"User-Agent": "latin-research"}
@@ -43,7 +44,7 @@ DFHG_API = "http://www.dfhg-project.org/DFHG/api.php"
 DFHG_AUTHORS = "https://raw.githubusercontent.com/DFHG-project/DFHG-project.github.io/master/dfhg_lofts_cite_urns.csv"
 MIN_TOKENS = 12        # shorter fragments match by chance too easily
 REUSE_MIN = .6         # coverage for a reuse lead
-CITE_MAX_SHARE = .1    # a citation whose nearby words DFHG mostly has is already collected
+CITE_MAX_SHARE = .1    # a citation whose nearby words DFHG has for that author is already collected
 
 
 def download(url, path):
@@ -68,6 +69,8 @@ def fetch_witness(name):
     ok = True
     for path, url in zip(witness_paths(name), WITNESSES[name][2].values()):
         ok = download(url, path) and ok
+    for work in COMMENTED.get(name, ()):      # the commented work, for its characters' names
+        ok = download(commented_url(work), RAW / "commented" / f"{work}.xml") and ok
     return ok
 
 
@@ -140,9 +143,15 @@ def reuse_leads(witness, all_fragments, min_coverage=REUSE_MIN):
 
 
 def citation_leads(witness, all_fragments, include_ambiguous=False, max_share=CITE_MAX_SHARE):
+    """Citations whose nearby wording DFHG lacks *for the cited author*, minus names of characters
+    in the work a commentary explains. Both choices are measured in docs/quotation-mining-plan.md
+    (phase 2): checking wording against all of DFHG lost 49 of Jacoby's additions in the scholia,
+    and the character filter removed 100 citations without losing one."""
     stems = author_stems(all_fragments, frozenset() if include_ambiguous else AMBIGUOUS_NAMES)
+    characters = character_names(witness.name)
     found = find_citations(witness, stems, all_fragments)
-    leads = [dict(c, kind="citation", score=c["dfhg_share"]) for c in found if c["dfhg_share"] < max_share]
+    leads = [dict(c, kind="citation", score=c["dfhg_share"]) for c in found
+             if c["author_share"] < max_share and not is_character(c["name"], stems[c["author"]], characters)]
     return len(stems), len(found), leads
 
 
@@ -175,6 +184,7 @@ def run(args):
             witness = need_witness(name)
             listed, reuse = reuse_leads(witness, all_fragments)
             stems, cites, leads = citation_leads(witness, all_fragments, args.include_ambiguous)
+            author_priors(leads, all_fragments, WITNESSES[name][3])     # the Leads tab's "most promising"
             kept = store.replace_witness(name, reuse + leads)
             print(f"  {name}: {listed} fragments DFHG credits to it, {len(reuse)} reuse leads; "
                   f"{cites} citations of {stems} authors, {len(leads)} unmatched; "

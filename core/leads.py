@@ -26,8 +26,12 @@ from typing import Any, Dict, Iterable, List, Optional
 
 DEFAULT_DB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "leads.db")
 VERDICTS = ("new", "collected", "not_quotation", "unsure")
+# "default" (most promising): citations by the Mueller-only prior (ingest.quotations.author_priors),
+# which on the scholia found 11 of Jacoby's additions to Mueller in the top 20 where the model's rank
+# found none; then everything else (reuse leads have no prior) by the model's rank.
 SORTS = {
-    "default": "CASE WHEN tag_json IS NULL THEN 1 ELSE 0 END, rank_score DESC, id",
+    "default": "prior IS NULL, prior DESC, CASE WHEN tag_json IS NULL THEN 1 ELSE 0 END, rank_score DESC, id",
+    "model": "CASE WHEN tag_json IS NULL THEN 1 ELSE 0 END, rank_score DESC, id",
     "witness": "witness, id",
     "author": "author, id",
     "recent": "id DESC",
@@ -56,7 +60,9 @@ CREATE TABLE IF NOT EXISTS leads (
     verdict      TEXT,
     verdict_note TEXT,
     verdict_at   TEXT,
-    stale        INTEGER NOT NULL DEFAULT 0  -- reviewed, but the latest run no longer finds it
+    stale        INTEGER NOT NULL DEFAULT 0, -- reviewed, but the latest run no longer finds it
+    prior        REAL,                      -- citation: Mueller-only prior, see ingest.quotations.author_priors
+    credited     INTEGER                    -- citation: fragments of the author DFHG credits to this text
 );
 CREATE INDEX IF NOT EXISTS idx_leads_witness ON leads(witness);
 CREATE INDEX IF NOT EXISTS idx_leads_untagged ON leads(tag_json) WHERE tag_json IS NULL;
@@ -81,9 +87,10 @@ class LeadStore:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
         columns = {r[1] for r in self.conn.execute("PRAGMA table_info(leads)")}
-        if "stale" not in columns:   # databases made before the column existed
-            self.conn.execute("ALTER TABLE leads ADD COLUMN stale INTEGER NOT NULL DEFAULT 0")
-            self.conn.commit()
+        for name, decl in (("stale", "INTEGER NOT NULL DEFAULT 0"), ("prior", "REAL"), ("credited", "INTEGER")):
+            if name not in columns:   # databases made before the column existed
+                self.conn.execute(f"ALTER TABLE leads ADD COLUMN {name} {decl}")
+        self.conn.commit()
         self._lock = threading.Lock()
 
     def close(self) -> None:
@@ -98,14 +105,15 @@ class LeadStore:
             for r in rows:
                 self.conn.execute(
                     """INSERT INTO leads (key, kind, witness, loc, author, fragment, name, formula, score,
-                                          context, fragment_text, dfhg_source, found_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                          context, fragment_text, dfhg_source, found_at, prior, credited)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(key) DO UPDATE SET loc=excluded.loc, score=excluded.score,
-                           context=excluded.context, fragment_text=excluded.fragment_text,
-                           dfhg_source=excluded.dfhg_source""",
+                           formula=excluded.formula, context=excluded.context,
+                           fragment_text=excluded.fragment_text, dfhg_source=excluded.dfhg_source,
+                           prior=excluded.prior, credited=excluded.credited""",
                     (lead_key(r), r["kind"], r["witness"], r.get("loc"), r.get("author"), r.get("fragment"),
                      r.get("name"), r.get("formula"), r.get("score"), r["context"], r.get("fragment_text"),
-                     r.get("dfhg_source"), _now()))
+                     r.get("dfhg_source"), _now(), r.get("prior"), r.get("credited")))
                 n += 1
             self.conn.commit()
         return n

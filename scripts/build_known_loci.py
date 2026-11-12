@@ -23,7 +23,8 @@ import requests
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from ingest.known_loci import as_rows, from_dfhg, from_jacoby, near, suda_headwords, witness_locus  # noqa: E402
+from ingest.known_loci import (TOLERANCE, as_rows, from_dfhg, from_jacoby, name_key, near,  # noqa: E402
+                               suda_headwords, table_author, witness_locus)
 from ingest.quotations import RAW, WITNESSES, load_dfhg, load_witness, score                     # noqa: E402
 
 # FGrHist text volumes on archive.org that anyone may download (not lending-only):
@@ -38,8 +39,7 @@ NOTICE = ("Private research use only. OCR text of Jacoby, Die Fragmente der grie
           "(1923-57; the 1950s volumes are still in copyright), from archive.org (Vanderbilt University and\n"
           "Claremont School of Theology scans), kept for building a table of source references.\n"
           "Not to be published or redistributed.\n")
-MAPPED = ("athenaeus", "pindar_scholia", "suda")
-TOLERANCE = {"athenaeus": 1, "pindar_scholia": 2, "suda": 0}
+MAPPED = tuple(TOLERANCE)
 
 
 def fetch():
@@ -77,16 +77,9 @@ def build():
     return jacoby, dfhg, fragments
 
 
-def _name_key(name):
-    s = (name.lower().split() or [""])[0]
-    for a, b in (("k", "c"), ("ai", "ae"), ("oi", "oe"), ("ou", "u"), ("y", "i"), ("ph", "f"), ("th", "t")):
-        s = s.replace(a, b)
-    return re.sub(r"(os|us|es|as|is|on|um|e)$", "", s)
-
-
 def measure(jacoby, dfhg, fragments):
     """Coverage: are the passages of fragments we know come from a text in the table?"""
-    jacoby_authors = {_name_key(r.author.split(" ", 1)[1]) for r in jacoby}
+    jacoby_authors = {name_key(r.author.split(" ", 1)[1]) for r in jacoby}
     for w in MAPPED:
         wit = load_witness(w)
         heads = suda_headwords(wit) if w == "suda" else None
@@ -97,7 +90,7 @@ def measure(jacoby, dfhg, fragments):
             if cov >= .5:
                 found.append((f, witness_locus(wit, pos, heads)))
         print(f"\n{w}: {len(gold)} fragments DFHG credits to it, {len(found)} found by the matcher")
-        for name, rows, subset in (("FGrHist", jacoby, lambda f: _name_key(f["author"] or "") in jacoby_authors),
+        for name, rows, subset in (("FGrHist", jacoby, lambda f: name_key(f["author"] or "") in jacoby_authors),
                                    ("DFHG", dfhg, lambda f: True), ("both", jacoby + dfhg, lambda f: True)):
             ix = [r.locus for r in rows if r.witness == w and r.locus]
             pool = [loc for f, loc in found if loc and subset(f)]
@@ -113,7 +106,7 @@ def measure(jacoby, dfhg, fragments):
     for w in MAPPED:
         wit = load_witness(w)
         heads = suda_headwords(wit) if w == "suda" else None
-        ix = [(_table_author(r), r.locus) for r in jacoby + dfhg if r.witness == w and r.locus]
+        ix = [(table_author(r), r.locus) for r in jacoby + dfhg if r.witness == w and r.locus]
         for kind in ("citation", "reuse"):
             rows = db.execute("SELECT key, loc, author FROM leads WHERE witness=? AND kind=?", (w, kind)).fetchall()
             same = anywhere = 0
@@ -122,13 +115,8 @@ def measure(jacoby, dfhg, fragments):
                 here = witness_locus(wit, pos, heads) if pos is not None else None
                 hits = [a for a, k in ix if here and near(w, here, k, TOLERANCE[w])]
                 anywhere += bool(hits)
-                same += _name_key(author or "") in hits
+                same += name_key(author or "") in hits
             print(f"  {w} {kind}: {same} of {len(rows)} ({anywhere} at a collected passage of any author)")
-
-
-def _table_author(row) -> str:
-    """Name key of a table row's author: "244 APOLLODOROS V. ATHEN" and "APOLLODORUS" both give "apollodor"."""
-    return _name_key(re.sub(r"^\d+\s+", "", row.author))
 
 
 def main():
