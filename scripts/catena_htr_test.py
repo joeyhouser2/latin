@@ -104,19 +104,22 @@ def cer(a, b):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="*", default=MODELS)
+    ap.add_argument("--scale", type=int, default=100, help="IIIF size in percent (the test of a smaller download)")
     args = ap.parse_args()
     IMAGES.mkdir(parents=True, exist_ok=True)
     truth = {}                                      # image file -> (manuscript, transcribed lines)
     for path in sorted(PTA.glob("*MsCat*.xml")):
         ms = path.stem.split("-")[-1]
         for url, lines in pages(path):
-            name = f"{ms}_{re.sub(r'[^0-9A-Za-z]+', '_', url.split('/iiif/')[-1])[:60]}.jpg"
+            if args.scale != 100:
+                url = url.replace("/full/0/", f"/pct:{args.scale}/0/")
+            name = f"{'' if args.scale == 100 else f'p{args.scale}_'}{ms}_{re.sub(r'[^0-9A-Za-z]+', '_', url.split('/iiif/')[-1])[:60]}.jpg"
             if lines and fetch(url, IMAGES / name):
                 truth.setdefault(name, (ms, []))[1].extend(lines)
     print(f"{len(truth)} page images, {sum(len(v[1]) for v in truth.values())} transcribed lines")
     results = {}
     for m in args.models:
-        out = htr.transcribe_images([str(IMAGES / n) for n in truth], cache_path=str(BENCH / f"catena_{m}.json"),
+        out = htr.transcribe_images([str(IMAGES / n) for n in truth], cache_path=str(BENCH / f"catena_{m}{'' if args.scale == 100 else f'_p{args.scale}'}.json"),
                                     model=str(ROOT / "models" / "htr" / m), log=lambda s: None)
         rows = []
         for name, (ms, lines) in truth.items():
@@ -138,7 +141,7 @@ def main():
         results[m] = {"line_cer": round(mean_cer, 3), "coverage": round(mean_cov, 3),
                       "pages": [{"ms": r[0], "image": r[1], "line_cer": round(r[2], 3), "coverage": r[3]}
                                 for r in rows]}
-    (ROOT / "data" / "htr_bench_catena.json").write_text(json.dumps(results, ensure_ascii=False, indent=1),
+    (ROOT / "data" / f"htr_bench_catena{'' if args.scale == 100 else f'_p{args.scale}'}.json").write_text(json.dumps(results, ensure_ascii=False, indent=1),
                                                           encoding="utf-8")
 
 
