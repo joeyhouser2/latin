@@ -130,7 +130,60 @@ def main():
         pass
     assert describe("triage_leads", {"model": "qwen3:14b"}) == "Sort leads: untagged leads (qwen3:14b)"
     assert set(WITNESSES) >= {"athenaeus", "suda", "pindar_scholia"}
+    known_loci_checks()
     print("quotations self-test passed")
+
+
+JACOBY_PAGE = """60 3. PHEREKYDES VON ATHEN
+3 a) SCHOL. PINDAR. P III 59: örı &v Auxeoelaı &ıreı Kogwris,
+Osooaktrois (III): Borßıas. b) SCHOL. EURIP. Alkest. 1: Ava&ardoiöng ypyow (F 35a)
+4 (8) ATHEN. XII 59 p. 542 A: Yulmvöog 0’ ö Kahlarıavös
+5 STEPH. BYZ. s. ‘Yoia' sölıg Bowriag
+7 Meineke 21—22 Ö& hinter äöpaoav P, hinter maoddofov cett
+12 Ö& Taurıwv eioiv
+2. LÄNDER UND VÖLKER
+13 — XIII 60,5: Aaumows de adrov"""
+
+
+# Part III: dates after the name, running heads over several authors, Greek book titles OCR'd as
+# Latin capitals, source lines numbered with a dot, Greek section letters and apparatus lines.
+JACOBY_III_PAGE = """298. AUTESION s.III/IIs ?
+1 (IV 346, 1) ATHEN. 11,2 p. 460 D: τὸ δὲ ποτήριον
+299. PYTHAINETOS -- 300. THEOGENES 3
+2 (2) ATHEN. 14, 79 p. 660 ΑΒ: καὶ
+1. EYBOIKA
+3 (-) SUDA s. V. Τρικέφαλος * Ἑρμῆς
+107. STEPH. BYZ. s. Ὀρχομενός πόλις
+7 Athen. 1, 5 p. 4 A 6 αὐτὸς Sintenis αὐτοὺς O
+8 ATHEN. 7 Athen. 1, 5 p. 4 A 6 αὐτὸς
+304. DEMETRIOS (DAMEN) <VON ARGOS> 5. IVa
+1 (-) ATHEN. 4, 31 p. 148 F—149 C: λέγει"""
+
+
+def known_loci_checks():
+    from ingest.known_loci import from_dfhg, from_jacoby, near, parse_locus
+    got = [(r.author, r.fragment, r.witness, r.locus) for r in from_jacoby(JACOBY_III_PAGE, "test")]
+    assert got == [("298 AUTESION", "1", "athenaeus", "460d"), ("298 AUTESION", "2", "athenaeus", "660a"),
+                   ("298 AUTESION", "3", "suda", "τρικεφαλοσ"), ("298 AUTESION", "8", "athenaeus", None),
+                   ("304 DEMETRIOS (DAMEN) <VON ARGOS>", "1", "athenaeus", "148f")], got
+    rows = from_jacoby(JACOBY_PAGE, "test")
+    got = [(r.author, r.fragment, r.witness, r.locus) for r in rows]
+    assert got == [("3 PHEREKYDES VON ATHEN", "3a", "pindar_scholia", "P.3.59"),
+                   ("3 PHEREKYDES VON ATHEN", "3b", "euripides_scholia", None),
+                   ("3 PHEREKYDES VON ATHEN", "4", "athenaeus", "542a"),
+                   ("3 PHEREKYDES VON ATHEN", "5", "stephanus", None),
+                   ("3 PHEREKYDES VON ATHEN", "13", "stephanus", None)], got
+    assert rows[2].concordance == "8"
+    for raw, want in (("ATHENAI. II 70 A", "70a"), ("Athenaeus XIV, 619, D", "619d"), ("ATHENAI. II 35 AB", "35a")):
+        assert parse_locus("athenaeus", raw) == want, raw
+    for raw, want in (("SCHOL. PINDAR. J IV 104", "I.4.104"), ("Schol. Pindar. Isthm. III (IV), 104:", "I.3.104"),
+                      ("Schol. Pindari Olymp. XIII, vs. 32:", "O.13.32")):
+        assert parse_locus("pindar_scholia", raw) == want, raw
+    assert parse_locus("suda", "Suidas v. Ὅμηρος:") == "ομηροσ"
+    assert near("athenaeus", "542f", "543a", 1) and not near("athenaeus", "542a", "542c", 1)
+    assert near("pindar_scholia", "O.9.104", "O.9.106", 2) and not near("pindar_scholia", "O.9.104", "P.9.104", 2)
+    dfhg = from_dfhg([{"author": "X", "n": "1", "witness": "Athen. XII, p. 527, F | Idem XIV, p. 649, F:"}])
+    assert (dfhg[0].witness, dfhg[0].locus) == ("athenaeus", "649f"), dfhg
 
 
 if __name__ == "__main__":

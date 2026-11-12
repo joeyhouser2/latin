@@ -117,18 +117,24 @@ class Witness:
         return " ".join(self.orig[max(0, start):min(len(self.orig), end)])
 
 
-def _walk_tei(el, loc, out):
+def _walk_tei(el, loc, out, page):
     tag = el.tag.replace(TEI, "")
     if tag in TEI_SKIP:
         return
     if tag == "div" and el.get("type") == "textpart":
         loc = loc + [el.get("n") or "?"]
+    # Editions cited by a standard page (Casaubon's for Athenaeus) mark it with a
+    # milestone; carry it in the location so a lead can be checked against
+    # collections that cite by that page. See ingest/known_loci.py.
+    if tag == "milestone" and el.get("unit") == "casaubonpage" and el.get("n"):
+        page[0] = el.get("n")
+    where = lambda: ".".join(loc) + (f" p.{page[0]}" if page[0] else "")   # noqa: E731
     if el.text:
-        out.append((el.text, ".".join(loc)))
+        out.append((el.text, where()))
     for child in el:
-        _walk_tei(child, loc, out)
+        _walk_tei(child, loc, out, page)
         if child.tail:
-            out.append((child.tail, ".".join(loc)))
+            out.append((child.tail, where()))
 
 
 def read_tei(paths):
@@ -136,7 +142,7 @@ def read_tei(paths):
     parts = []
     for i, path in enumerate(paths, 1):
         body = ET.parse(path).getroot().find(f"{TEI}text/{TEI}body")
-        _walk_tei(body, [str(i)] if len(paths) > 1 else [], parts)
+        _walk_tei(body, [str(i)] if len(paths) > 1 else [], parts, [None])
     return parts
 
 
