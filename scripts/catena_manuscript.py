@@ -22,6 +22,7 @@ Each frame of the film is an opening of two pages; ``fetch`` cuts it at the gutt
 import argparse
 import json
 import pathlib
+import re
 import sys
 import urllib.request
 
@@ -41,6 +42,9 @@ DIR = RAW / "manuscripts" / NAME
 CACHE = DIR / "htr_greek_minuscule.json"
 MODEL = ROOT / "models" / "htr" / "greek_minuscule_s9-12_NFC.mlmodel"
 NT_DIR = RAW / "nt"
+PG_DIR = RAW / "witnesses" / "pg"
+PG_ITEMS = ["patrologicursus39migngoog", "patrologiae_cursus_completus_gr_vol_039",
+            "patrologicursus60migngoog", "patrologiae_cursus_completus_gr_vol_060"]
 NT_BOOKS = ["65-Ac", "80-Jas", "81-1Pe", "82-2Pe", "83-1Jn", "84-2Jn", "85-3Jn", "86-Jud"]
 NT_URL = "https://raw.githubusercontent.com/morphgnt/sblgnt/master/{book}-morphgnt.txt"
 WINDOW, STRIDE, LOW = 50, 25, .25
@@ -94,12 +98,21 @@ def fetch(args):
         if not path.exists():
             NT_DIR.mkdir(parents=True, exist_ok=True)
             path.write_bytes(get(NT_URL.format(book=book)))
+    PG_DIR.mkdir(parents=True, exist_ok=True)
+    for item in PG_ITEMS:
+        path = PG_DIR / f"{item}.txt"
+        if not path.exists():
+            path.write_bytes(get(f"https://archive.org/download/{item}/{item}_djvu.txt"))
 
 
 def read(args):
     pages = sorted(str(p) for p in DIR.glob("f*_[ab].jpg"))
     print(f"{len(pages)} pages", flush=True)
-    htr.transcribe_images(pages, cache_path=str(CACHE), model=str(MODEL), log=lambda s: print(s, flush=True))
+    # In batches: 720 paths on one command line is too long for Windows. The cache makes it resumable.
+    for i in range(0, len(pages), 60):
+        htr.transcribe_images(pages[i:i + 60], cache_path=str(CACHE), model=str(MODEL), log=lambda s: None)
+        print(f"  read {min(i + 60, len(pages))}/{len(pages)} pages | overall {min(i + 60, len(pages))}/{len(pages)}",
+              flush=True)
 
 
 def nt_text():
@@ -122,7 +135,32 @@ def printed():
     for group in mc.FATHERS.values():
         parts += read_tei(sorted(mc.FATHERS_DIR.glob(f"{group}.*.xml")))
     parts.append((nt_text(), "NT"))
-    return Witness("printed", parts)
+    # Migne PG 39 (Didymus, with his Acts fragments) and PG 60 (Chrysostom's homilies on Acts):
+    # archive.org OCR, two scans of each (public domain). Not in First1KGreek, Perseus or Calfa.
+    for path in sorted(PG_DIR.glob("*.txt")):
+        text = re.sub(r"-\s*\n\s*", "", path.read_text(encoding="utf-8", errors="replace"))   # line-end hyphens
+        lines = text.splitlines()
+        for i in range(0, len(lines), 2000):
+            parts.append(("\n".join(lines[i:i + 2000]), f"{path.stem}:{i}"))
+    # Migne's OCR reads κ as χ throughout (χοινὴν, πεντήχοντα). Merging the two letters on both sides
+    # (here and in mapping) costs the clean texts almost nothing and gives Migne its shingles back.
+    return Witness("printed", [(t.translate(KAPPA), loc) for t, loc in parts])
+
+
+# Nomina sacra, as the model reads them (normalized, final sigma as σ): the scribe writes πρς for
+# πατρός, θυ for θεοῦ. Expanded before matching, or every sentence about God loses its shingles.
+NOMINA_SACRA = {
+    "θσ": "θεοσ", "θυ": "θεου", "θω": "θεω", "θν": "θεον", "κσ": "κυριοσ", "κυ": "κυριου", "κω": "κυριω",
+    "κν": "κυριον", "χσ": "χριστοσ", "χυ": "χριστου", "χω": "χριστω", "χν": "χριστον", "ισ": "ιησουσ",
+    "ιυ": "ιησου", "ιν": "ιησουν", "πνα": "πνευμα", "πνσ": "πνευματοσ", "πνι": "πνευματι", "πηρ": "πατηρ",
+    "πρσ": "πατροσ", "πρι": "πατρι", "πρα": "πατερα", "υσ": "υιοσ", "υυ": "υιου", "υω": "υιω", "υν": "υιον",
+    "ανοσ": "ανθρωποσ", "ανου": "ανθρωπου", "ανω": "ανθρωπω", "ανον": "ανθρωπον", "ανοι": "ανθρωποι",
+    "ανων": "ανθρωπων", "ουνοσ": "ουρανοσ", "ουνου": "ουρανου", "ουνω": "ουρανω", "ουνον": "ουρανον",
+    "σηρ": "σωτηρ", "σρσ": "σωτηροσ", "ιηλ": "ισραηλ", "δαδ": "δαυιδ", "ιλημ": "ιερουσαλημ",
+}
+
+
+KAPPA = str.maketrans("χΧ", "κΚ")
 
 
 def mapping(args):
@@ -132,7 +170,7 @@ def mapping(args):
     for page in sorted(text):
         for li, line in enumerate(text[page].splitlines()):
             for original, normalized in tokenize(line):
-                words.append(normalized)
+                words.append(NOMINA_SACRA.get(normalized, normalized).translate(KAPPA))
                 originals.append(original)
                 where.append((page, li))
     print(f"{len(text)} pages, {len(words):,} words read", flush=True)
@@ -165,6 +203,46 @@ def mapping(args):
     out.write_text(json.dumps({"windows": windows, "stretches": stretches}, ensure_ascii=False, indent=1),
                    encoding="utf-8")
     print(f"wrote {out.relative_to(ROOT)}")
+    candidates(words, originals, where, windows, labels, base)
+
+
+def candidates(words, originals, where, windows, labels, base):
+    """The strict list: runs of 4+ windows (125+ words) at chance level that read as real Greek.
+
+    Chance level is the 99th percentile of the same windows with their words shuffled; legible
+    means 75% or more of the run's words are in the lemma table (else it is a misread page).
+    """
+    import random
+    from ingest.lemmas import load_table
+    table = load_table()
+    rng = random.Random(1)
+    shuffled = []
+    for s, _ in windows:
+        win = words[s:s + WINDOW]
+        rng.shuffle(win)
+        shuffled.append(score(win, base)[0])
+    chance = sorted(shuffled)[int(.99 * len(shuffled))]
+    runs, cur = [], []
+    for s, c in windows + [(None, 1.0)]:
+        if c <= chance:
+            cur.append(s)
+            continue
+        if len(cur) >= 4:
+            runs.append((cur[0], cur[-1] + WINDOW))
+        cur = []
+    out = []
+    for a, b in runs:
+        valid = sum(t in table for t in words[a:b]) / (b - a)
+        before = [x for i, x in labels if i <= a + 10]
+        out.append({"start": a, "words": b - a, "legible": round(valid, 2), "label": before[-1] if before else None,
+                    "page": pathlib.Path(where[a][0]).name, "line": where[a][1],
+                    "text": " ".join(originals[a:b])})
+    good = [o for o in out if o["legible"] >= .75]
+    print(f"chance level (shuffled p99): {chance:.2f}; runs of 125+ words at chance: {len(out)} "
+          f"({sum(o['words'] for o in out):,} words); legible: {len(good)} ({sum(o['words'] for o in good):,} words)")
+    path = ROOT / "data" / "quotations" / f"catena_ms_{NAME}_candidates.json"
+    path.write_text(json.dumps(good, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"wrote {path.relative_to(ROOT)}")
 
 
 def main():

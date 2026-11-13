@@ -86,8 +86,10 @@ WITNESSES = {
        )},
 }
 # Cramer's catenae on the New Testament (phase 4): items labelled by author, read by ingest/catenae.py.
-_CRAMER = ("001 002 003 004 005 006 007 008 010 011 012 013 019 020 021 022 023 024 034 035 036 037 038 040").split()
-WITNESSES["cramer_catenae"] = ("Cramer, Catenae Graecorum Patrum in Novum Testamentum (24 catenae)", "tei",
+# 041-046: the Petrine, Johannine and Jude catenae; X01-X03: the Apocalypse commentaries.
+_CRAMER = ("001 002 003 004 005 006 007 008 010 011 012 013 019 020 021 022 023 024 034 035 036 037 038 040 "
+           "041 042 043 044 045 046 X01 X02 X03").split()
+WITNESSES["cramer_catenae"] = ("Cramer, Catenae Graecorum Patrum in Novum Testamentum (33 catenae)", "tei",
                                {f"tlg4102.tlg{n}.xml": f"{_FIRST1K}/tlg4102/tlg{n}/tlg4102.tlg{n}.1st1K-grc1.xml"
                                 for n in _CRAMER}, r"Cramer[^|]*Caten|Caten[^|]*Cramer")
 # OCR'd Byzantine reference works (phase 5). archive.org's OCR where its Greek is usable (84-91%

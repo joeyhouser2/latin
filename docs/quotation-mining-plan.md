@@ -553,3 +553,56 @@ Per page, the Greek model's CER is 6–11% and coverage 0.59–0.90. The errors 
 **Limits.** This is one manuscript, one hand and 97 lines. The Pal. gr. 23 benchmark gave only 40% known words, so hands differ a lot. The crops are tidy single-column pages; frame catenae, with the text surrounded by commentary, will segment worse.
 
 **What it means for phase 6.** The expensive part, building Greek minuscule HTR, turned out to exist already. The next step would be one whole catena manuscript from an open IIIF source, such as the LoC's Jerusalem and Sinai collections. Each item would be matched against Cramer and the open Fathers (phase 4's `mine_catenae.py` checks) to list the items that are in no printed edition. Labelling pages in the scan viewer is only needed if a hand reads much worse than this one. The PTA transcriptions can then serve as ready-made training lines.
+
+## Phase 6 run: one whole catena manuscript (2026-11-12)
+
+Code: `scripts/catena_manuscript.py` (`fetch`, `read`, `map`). The images, the HTR text and the maps are gitignored: `data/raw/quotations/manuscripts/taphou25/` and `data/quotations/catena_ms_taphou25*.json`.
+
+**Manuscript.** Jerusalem, Hagios Stavros (Taphou) 25: a catena on Acts and the Catholic Epistles, 9th/10th century, 347 folios. The source is the Library of Congress film (public domain). It has 360 IIIF frames at half size, each cut at the gutter into two pages, so 720 pages and 298 MB. Kraken `greek_minuscule_s9-12` read the 720 pages on the RTX 4060 Ti, giving 154,955 words. About 80% of words are in the lemma table on most pages; one sampled page reached only 52%.
+
+**Mapping.** A 50-word window (stride 25) is scored against everything printed and open:
+- Cramer's catenae (tlg4102);
+- the phase 4 Fathers;
+- the SBLGNT text of Acts and the Catholic Epistles.
+
+Each window gets the nearest author label before it.
+
+The first pass covered 47% of windows at coverage ≥ 0.25. Two gaps in the baseline explained much of the rest:
+- **Missing Cramer volumes.** The witness list stopped at James (tlg040). First1KGreek also has 1–2 Peter, 1–3 John and Jude (tlg041–046), plus the Apocalypse commentaries (X01–X03), and they are now in `_CRAMER`. Phase 4's `mine_catenae.py` will read them too on its next run.
+- **Nomina sacra.** The scribe writes θυ, κυ, πρς, πνα, ανος and so on. Expanding them before matching (`NOMINA_SACRA`) gave every sentence about God its shingles back.
+
+After both fixes, 58% of windows are covered. The share is about the same for every labelled author (Ammonius 59%, Severus 61%, Chrysostom 57%, Didymus 62%, Cyril 58%), so the remaining gaps are mostly misreading, not missing authors.
+
+**Chance level.** Shuffling each window's words gives a coverage of 0.08 or less in 99% of windows. The real windows spread from 0 to 0.7 (median about 0.3). A stretch counts as a candidate only if all of the following hold:
+- at least four consecutive windows (125+ words) are at or below the shuffled 99th percentile;
+- the stretch is legible, with 75% or more of its words in the lemma table.
+
+That leaves 82 chance-level runs (15,475 words), of which 27 are legible (about 4,500 words, 3% of the manuscript). They are listed in `data/quotations/catena_ms_taphou25_candidates.json` with page, line, label and text. Of the 27:
+- Most cluster on the first 20 frames (Acts 1–2) and in the Pauline speeches later in Acts.
+- Some are coherent text, such as the Chrysostom-labelled passage on f0022 (against those who deny the Ascension) and the Didymus passage on f0029 (the senses of τόπος).
+- Others have truncated words (f0232, f0331), which looks like a segmentation failure, with half lines or marginal blocks read on their own.
+
+**Checks so far.** Cramer's Acts in First1KGreek is complete: 118,578 words, with the same authors in the same proportions (Chrysostom 441 labels, Ammonius 143, Didymus 59). So the candidates are not in Cramer. A web search for two of the coherent passages found neither. That proves little, because the editions that could hold them are not open as clean text:
+- Chrysostom's homilies on Acts (PG 60);
+- Didymus's fragments on Acts (PG 39);
+- the Cyril and Athanasius volumes of PG.
+
+**Verdict.** The pipeline works end to end on a real manuscript. It reads the hand, maps 58% of it onto printed text without any labelling, and narrows 155,000 words to 27 passages worth a human look. Nothing is confirmed unpublished. Settling them takes either a check against PG 60 and PG 39, or open PG OCR added to the baseline (archive.org scans of Migne, re-OCR'd with `scripts/reocr_scans.py` if needed).
+
+**PG 39 and PG 60 added (same day).** Neither volume is in First1KGreek, Perseus or Calfa's open PG, so I used archive.org OCR: two public-domain scans of each, 1857–62.
+- **Quality.** In the Google scans, 83–88% of Greek words are real. The other two OCR'd Migne's Latin columns as Greek letters, which adds noise but cannot create 3-word matches.
+- **κ read as χ.** Migne's OCR reads κ as χ throughout (χοινήν, πεντήχοντα). The map now merges the two letters on both sides (`KAPPA`) and joins words hyphenated across line ends.
+- **What PG adds.** Against the Acts part of the manuscript:
+  - PG 60 alone covers 21% of the windows labelled Chrysostom; Cramer's Acts covers 60%.
+  - PG 60 adds only 6 windows that Cramer lacks.
+  - PG 39 adds 1 window for Didymus. Migne's Didymus on Acts is largely taken from Cramer.
+  - Overall coverage goes from 58% to 59%.
+- **Candidates.** The strict list drops from 27 to 24 (about 4,075 words). The three that dropped were just at the threshold.
+- **Weak evidence.** PG 60 finds only a fifth of even the known Chrysostom extracts. The catena abridges and rewords him, and the OCR is noisy. So a candidate's absence from PG 60 is weak evidence, not proof.
+- **Who they are.** The 24 survivors are labelled Ammonius (8), Didymus (4), Cyril (4), Chrysostom (3), Severus (2), Theodoret (2), Athanasius (1) and Severian (1).
+- **The best two.** The two coherent Chrysostom passages on f0022 (Acts 1, the Ascension) remain. Their content is anti-heretical: against those who say Christ neither came from heaven nor was taken up into it in the flesh. That suggests the label belongs to an earlier item and the text is by someone else.
+
+**Next, if wanted.**
+1. Read the f0011–f0032 candidates (Acts 1–2) against the page images. That is 10 passages, the most coherent ones.
+2. Fix the segmentation on two-block pages: re-segment the pages whose candidates have truncated words (f0232, f0331).
+3. Run the same pipeline on a second LoC catena manuscript of a different type.
