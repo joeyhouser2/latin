@@ -119,6 +119,11 @@ def retranslate_german(lib, docs, args):
           f"{(time.time() - t_start) / 60:.1f} min.")
 
 
+def _is_papyrus(doc) -> bool:
+    """A Latin papyrus, tablet or ostracon from ingest/papyri.py (genre "... papyrus ...")."""
+    return doc.language == "la" and "papyrus" in (doc.genre or "")
+
+
 def _section_slice(doc, section_range):
     """The document's sections narrowed to a 1-based inclusive range.
 
@@ -188,10 +193,12 @@ def main():
     if args.skip_translated:
         docs = [d for d in docs if d.translation_status != "translated"]
     if args.engine == "llm":
-        keep = [d for d in docs if d.language not in ("la", "grc")]
+        # Vernaculars, plus Latin papyri: NLLB loops on their Leiden brackets and
+        # gaps, where an LLM briefed on the conventions reads them (core/llm_translator.py).
+        keep = [d for d in docs if d.language not in ("la", "grc") or _is_papyrus(d)]
         if len(keep) != len(docs):
-            print(f"--engine llm handles vernacular documents only; skipping "
-                  f"{len(docs) - len(keep)} Latin/Greek document(s)")
+            print(f"--engine llm handles vernacular documents and Latin papyri only; "
+                  f"skipping {len(docs) - len(keep)} Latin/Greek document(s)")
         docs = keep
     if args.skip_done_elsewhere:
         # Fully translated on another machine, per the committed ledger
@@ -234,7 +241,8 @@ def main():
         print(f"LLM engine: {args.llm_model}")
     for d, pending in plan:
         if server:
-            tr = LLMTranslator(server.client, args.llm_model, d.language, d.language_stage,
+            tr = LLMTranslator(server.client, args.llm_model, d.language,
+                               "papyrus" if _is_papyrus(d) else d.language_stage,
                                title=d.title, author=d.author, century=d.century,
                                genre=d.genre, note=d.translation_evidence)
         else:

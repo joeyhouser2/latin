@@ -119,6 +119,22 @@ BRIEFINGS: Dict[Tuple[str, str], str] = {
     ("fr", "medieval"): (
         "Old/Middle French or a modern-French rendering of it. Keep the tone of the "
         "beast epic: Renart the fox, Isengrin the wolf, Noble the lion."),
+    ("la", "papyrus"): (
+        "Latin documents written on papyrus, wooden tablets and potsherds (1st-7th c. AD): "
+        "letters, receipts, army rosters and reports, contracts, deeds, court records. They "
+        "are printed in a modern edition with the Leiden conventions, and here square "
+        "brackets are NOT folio marks: [abc] = letters lost and restored by the editor "
+        "(translate them; they are the best reading); [...] or [---] = text lost, and "
+        "'...' inside a word = illegible letters; for both, write … in the English at that "
+        "point and never guess what was there; (abc) = an abbreviation the editor expanded "
+        "(read the full word); ⟦abc⟧ = deleted by the scribe (leave out); <abc> = letters "
+        "the scribe left out. Spelling is often sub-classical: u for v, e for ae, i/e and "
+        "o/u confused, b for v, final -m dropped. Formulae: 'salutem' = greetings, "
+        "'uale/vale' = farewell, 'frater/soror' are affectionate address, not always kin; "
+        "dates by consuls, emperors' regnal years and indictions, and by Kalends/Nones/Ides "
+        "(iii Idus Septembres = 11 September); 'n(umero)' = in number, 'd(enarios)' = "
+        "denarii, 'v(ir) c(larissimus)' and similar are titles. A line that is mostly gaps "
+        "may come out as a few words and …; that is correct."),
     ("*", "*"): (
         "A medieval or early-modern vernacular whose spelling is not standardised. Read "
         "through variant spellings and archaic grammar to the intended sense."),
@@ -128,6 +144,7 @@ _STAGE_DESC = {
     "medieval": "a medieval manuscript text",
     "early_modern": "an early-modern (16th-17th century) text",
     "archaic": "an archaic-period text",
+    "papyrus": "a document on papyrus, a tablet or an ostracon, in a modern edition",
 }
 
 _SCHEMA = {
@@ -152,6 +169,24 @@ _SCHEMA = {
 UNCERTAIN = " [uncertain]"
 
 _FOLIO = re.compile(r"\[[IVXLC]*\d*[rv]\]|\[[ivxlc]+[rv]?\]")
+
+# What a papyrus line too broken to translate becomes. Without this the model
+# hands the Latin back as its "English" (seen on the Bu Njem ostraca).
+FRAGMENT = "[too fragmentary to translate]"
+_GAP = re.compile(r"\[\.\.\.\]|\[---\]|\.\.\.|…")
+_TOKEN = re.compile(r"[^\W\d_]{3,}")
+
+
+def _echoes_fragment(source: str, english: str) -> bool:
+    """True when the "translation" mostly repeats a gap-riddled source.
+
+    Both conditions are needed: a roster line of names legitimately comes back
+    nearly unchanged, but it is not full of gaps."""
+    src = {w.lower() for w in _TOKEN.findall(source)}
+    out = [w.lower() for w in _TOKEN.findall(english)]
+    if len(src) < 3 or not out or len(_GAP.findall(source)) < 4:
+        return False
+    return sum(w in src for w in out) / len(out) >= 0.5
 
 
 def briefing_for(language: str, stage: str) -> str:
@@ -181,6 +216,8 @@ class LLMTranslator(Translator):
             language_name=LANGUAGES.get(language, language),
             stage_desc=_STAGE_DESC.get(stage, "a pre-modern text"),
             briefing=briefing_for(language, stage))
+        # In a Leiden edition "[c]" or "[ii]" is a restored letter, not a folio mark.
+        self.strip_folios = stage != "papyrus"
         self.failures = 0     # lines that fell back to the unreadable marker
         self.uncertain = 0    # lines the model flagged low-confidence
 
@@ -209,12 +246,13 @@ class LLMTranslator(Translator):
         if m["note"]:
             head.append(f"About this work: {m['note']}")
         lines = list(head)
+        clean = (lambda t: _FOLIO.sub("", t).strip()) if self.strip_folios else str.strip
         if before:
             lines.append("")
-            lines += [f"CONTEXT: {_FOLIO.sub('', t).strip()}" for t in before]
+            lines += [f"CONTEXT: {clean(t)}" for t in before]
         lines.append("")
         lines.append("Translate each numbered line. Return one entry per line, with the same n.")
-        lines += [f"{n}. {_FOLIO.sub('', t).strip()}" for n, t in enumerate(chunk, 1)]
+        lines += [f"{n}. {clean(t)}" for n, t in enumerate(chunk, 1)]
         return "\n".join(lines)
 
     def _ask(self, chunk: List[str], before: List[str]) -> Optional[List[str]]:
@@ -228,7 +266,9 @@ class LLMTranslator(Translator):
             if not isinstance(e.get("n"), int):
                 continue
             text = (e.get("english") or "").strip()
-            if text and e.get("confidence") == "low":
+            if self.stage == "papyrus" and 1 <= e["n"] <= n and _echoes_fragment(chunk[e["n"] - 1], text):
+                text = FRAGMENT
+            if text and text != FRAGMENT and e.get("confidence") == "low":
                 text += UNCERTAIN
                 self.uncertain += 1
             got[e["n"]] = text

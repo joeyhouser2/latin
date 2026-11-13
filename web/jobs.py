@@ -177,6 +177,9 @@ def _translate_argv(p: Dict[str, Any]) -> List[str]:
     _flag(argv, "--chunk", p.get("chunk"))
     _flag(argv, "--max-length", p.get("max_length"))
     _flag(argv, "--skip-translated", p.get("skip_translated"))
+    # "llm": vernaculars and Latin papyri through a local LLM (translate_pending.py)
+    _flag(argv, "--engine", p.get("engine"))
+    _flag(argv, "--llm-model", p.get("llm_model"))
     # Re-translate German editorial segments already translated as Latin
     # (see ingest/german_detect.py); leaves every other segment untouched.
     _flag(argv, "--retranslate-german", p.get("retranslate_german"))

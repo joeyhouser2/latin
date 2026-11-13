@@ -85,6 +85,9 @@ SERIES_DEFAULTS = {
     "p.masada":  ([73, 74], "Masada"),
     "t.alb":     ([493, 496], "Vandal Africa (Tablettes Albertini)"),   # Gunthamund's years
 }
+# Edition labels as papyri.info prints them -> SERIES_DEFAULTS key.
+EDITION_SERIES = (("P.Ital.", "p.ital"), ("T.Vindol.", "t.vindol"), ("O.Bu Njem", "o.bu.njem"),
+                  ("P.Dura", "p.dura"), ("P.Masada", "p.masada"), ("T.Alb.", "t.alb"))
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +268,7 @@ def header_meta(root) -> Dict[str, Any]:
         "keywords": [" ".join(t.itertext()).strip()
                      for t in root.findall(".//t:textClass/t:keywords/t:term", NS)][:12],
         "tm": idno("TM"),
+        "hgv": (idno("HGV") or "").split(),      # one text can span several HGV records
         "hybrid": idno("ddb-hybrid") or idno("dclp-hybrid"),
     }
 
@@ -342,6 +346,24 @@ class PapyriConnector(Connector):
                                               for rel in self.tree(corpus)}
         rel = self._trees[f"{corpus}#by-tm"].get(str(tm))
         return f"{corpus}/{rel}" if rel else None
+
+    def translations(self, ids: Iterable[str]) -> List[Tuple[str, Optional[str]]]:
+        """Published translations (HGV, CC BY) of a text: [(path, language)].
+
+        Files are named by TM or HGV number plus a running suffix
+        (``Translations/0/53-1.xml``), so match on the part before the dash."""
+        if "Translations#by-id" not in self._trees:
+            by: Dict[str, List[str]] = {}
+            for rel in self.tree("Translations"):
+                by.setdefault(rel.rsplit("/", 1)[-1][:-4].rsplit("-", 1)[0], []).append(rel)
+            self._trees["Translations#by-id"] = by          # type: ignore[assignment]
+        by = self._trees["Translations#by-id"]
+        out = []
+        for rel in sorted({r for i in ids for r in by.get(str(i), [])}):
+            path = f"Translations/{rel}"
+            div = etree.fromstring(self.read(path)).find(".//t:div[@type='translation']", NS)
+            out.append((path, div.get(XML_LANG) if div is not None else None))
+        return out
 
     def read(self, path: str) -> bytes:
         """A repository file, from the mirror if its blob hash is current."""
@@ -513,7 +535,13 @@ class PapyriConnector(Connector):
             hgv = self.path_for("HGV_meta_EpiDoc", tm)
             if hgv:
                 head = header_meta(etree.fromstring(self.read(hgv)))
+        # The series may be the file's own id (p.ital;1;8) or only another edition
+        # it was published in: Ravenna papyri filed under their ChLA number still
+        # list "P.Ital. 1 20" among their editions.
         series = (head.get("hybrid") or "").split(";")[0]
+        if series not in SERIES_DEFAULTS:
+            series = next((s for ed in info["editions"] for prefix, s in EDITION_SERIES
+                           if ed.startswith(prefix)), series)
         if not head["years"] and series in SERIES_DEFAULTS:
             years, place = SERIES_DEFAULTS[series]
             head = {**head, "years": years, "place": head.get("place") or place,
@@ -526,7 +554,11 @@ class PapyriConnector(Connector):
         subject = (None if title in ("", "keiner", edition, f"TM {tm}")
                    or re.fullmatch(r"[a-z][a-z.]*\.[\w.]+", title) else title)
         lang = (info["lang"] or "grc").split("-")[0]
-        translation = self.path_for("Translations", tm)
+        # A published English translation makes the text "translated"; one only in
+        # another language, or none in papyri.info, proves nothing either way
+        # (editions in print often translate where papyri.info does not).
+        found = self.translations({tm, *info["header"]["hgv"], *head.get("hgv", [])})
+        english = [p for p, lg in found if lg == "en"]
 
         meta = {
             "title": f"{edition} — {subject}" if subject else edition,
@@ -542,10 +574,12 @@ class PapyriConnector(Connector):
                 head.get("place"), head.get("date_text")) if b),
             "shelfmark": head.get("inventory"),
             "license": LICENSE,
-            "has_existing_translation": bool(translation),
-            "translation_status": "translated" if translation else "unknown",
-            "translation_evidence": (f"papyri.info translation file {translation}"
-                                     if translation else None),
+            "has_existing_translation": bool(english),
+            "translation_status": "translated" if english else "unknown",
+            "translation_evidence": (
+                "English translation on papyri.info (HGV, CC BY): " + ", ".join(english) if english
+                else "papyri.info has translations only in " + ", ".join(
+                    sorted({lg or "?" for _, lg in found})) if found else None),
             "_verse": True,       # one segment per line: _render already grouped the lines
         }
         meta.update(meta_overrides)

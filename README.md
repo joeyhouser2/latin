@@ -466,9 +466,21 @@ python scripts/ingest.py papyri latin --discover --limit 50   # longest Latin te
 Editions are rendered as light Leiden text: `[restored]`, `[...]` lost,
 `(expanded)` abbreviations, `⟦deleted⟧`. Words broken across lines are rejoined,
 and lines are grouped into ~200-character segments. Texts with fewer than 40
-letters surviving outside the restorations are skipped. Where to go from here
-with papyrus *images*, and why our HTR models can't read them yet, is in
-`docs/papyri-htr-feasibility.md`.
+letters surviving outside the restorations are skipped. A published English
+translation on papyri.info (HGV, 64 of the Latin texts) sets the status to
+`translated`.
+
+Translate them with the LLM engine, not NLLB. NLLB loops on the brackets and
+dots ("Th, Th, Th…"), and stripping the marks makes it weld words across gaps.
+The LLM is briefed on the Leiden conventions, keeps `…` where text is lost, and
+marks lines too broken to read as `[too fragmentary to translate]`:
+
+```bash
+python scripts/translate_pending.py --engine llm --source-prefix papyri.info --language la
+```
+
+Where to go from here with papyrus *images*, and why our HTR models can't read
+them yet, is in `docs/papyri-htr-feasibility.md`.
 
 > **Windows crash, fixed in `core/__init__.py`.** Any HTTPS request made before the
 > embedder first loads used to segfault the process when the embedder then pulled in
