@@ -28,7 +28,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import interest                                           # noqa: E402
-from core.local_llm import OllamaClient, OllamaError, PrivateOllama   # noqa: E402
+from core.local_llm import (DEFAULT_CHAT_MODEL, OllamaClient, OllamaError,   # noqa: E402
+                            PrivateOllama)
 from core.summaries import SummaryStore                            # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,7 +44,7 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--doc-id", type=int, action="append", default=[],
                     help="only this work (repeatable); default every unrated work")
-    ap.add_argument("--model", default=os.environ.get("LATIN_SUMMARY_MODEL", "gemma4:12b"))
+    ap.add_argument("--model", default=os.environ.get("LATIN_SUMMARY_MODEL", DEFAULT_CHAT_MODEL))
     ap.add_argument("--force", action="store_true", help="re-rate works already rated")
     ap.add_argument("--limit", type=int, default=None, help="stop after N works")
     ap.add_argument("--ollama-url", default="",

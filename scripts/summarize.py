@@ -52,7 +52,8 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import interest                                           # noqa: E402
-from core.local_llm import OllamaClient, OllamaError, PrivateOllama   # noqa: E402
+from core.local_llm import (DEFAULT_CHAT_MODEL, OllamaClient, OllamaError,   # noqa: E402
+                            PrivateOllama)
 from core.summaries import SummaryStore                            # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -361,7 +362,7 @@ def main() -> None:
                     help="with --all: skip documents shorter than this (single epigrams "
                          "gain nothing from a summary; default 3)")
     ap.add_argument("--limit", type=int, default=None, help="stop after N documents")
-    ap.add_argument("--model", default=os.environ.get("LATIN_SUMMARY_MODEL", "gemma4:12b"))
+    ap.add_argument("--model", default=os.environ.get("LATIN_SUMMARY_MODEL", DEFAULT_CHAT_MODEL))
     ap.add_argument("--embed-model", default="nomic-embed-text")
     ap.add_argument("--source", choices=["both", "english", "original"], default="both")
     ap.add_argument("--sample-parts", type=int, default=6,

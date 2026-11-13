@@ -42,7 +42,7 @@ from web.library_view import LibraryView                     # noqa: E402
 from web.scans import Scans                                  # noqa: E402
 from core.summaries import HL_CLOSE, HL_OPEN, SummaryStore   # noqa: E402
 from core.summaries import SORTS as SUMMARY_SORTS            # noqa: E402
-from core.local_llm import OllamaClient                      # noqa: E402
+from core.local_llm import DEFAULT_CHAT_MODEL, OllamaClient  # noqa: E402
 from core.leads import SORTS as LEAD_SORTS                   # noqa: E402
 from core.leads import VERDICTS, LeadStore                   # noqa: E402
 from ingest.quotations import WITNESSES, witness_ready       # noqa: E402
@@ -659,12 +659,15 @@ def api_llm_models() -> Dict[str, Any]:
     try:
         models = llm.models(timeout=5)
     except Exception as exc:                                   # noqa: BLE001
-        return {"available": False, "error": f"{type(exc).__name__}: {exc}", "models": []}
+        return {"available": False, "error": f"{type(exc).__name__}: {exc}", "models": [],
+                "default": DEFAULT_CHAT_MODEL, "default_installed": False}
     chat = [{"name": m["name"], "size_gb": round(m.get("size", 0) / 1e9, 1),
              "params": m.get("details", {}).get("parameter_size")}
             for m in models
             if "embed" not in m["name"] and "completion" in (m.get("capabilities") or ["completion"])]
-    return {"available": True, "models": sorted(chat, key=lambda m: m["name"])}
+    return {"available": True, "models": sorted(chat, key=lambda m: m["name"]),
+            "default": DEFAULT_CHAT_MODEL,
+            "default_installed": any(m["name"] == DEFAULT_CHAT_MODEL for m in chat)}
 
 
 # ---------------------------------------------------------------------------

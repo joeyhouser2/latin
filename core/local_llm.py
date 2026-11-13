@@ -36,6 +36,12 @@ import requests
 
 DEFAULT_URL = "http://" + os.environ.get("OLLAMA_HOST", "127.0.0.1:11434").replace("http://", "")
 
+# The chat model summarize.py, rate_interest.py and translate_pending.py --engine llm
+# use when none is given (each also honours its own environment variable). It must be
+# installed: gemma4:12b was the default until it was removed from this machine, and
+# every job that named no model then failed. gemma3:12b (8.2 GB) fits either card.
+DEFAULT_CHAT_MODEL = "gemma3:12b"
+
 
 class OllamaError(RuntimeError):
     pass

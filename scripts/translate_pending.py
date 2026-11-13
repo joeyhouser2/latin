@@ -35,6 +35,7 @@ import sentence_transformers  # noqa: F401  (import order: see harvest script)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline import Library
+from core.local_llm import DEFAULT_CHAT_MODEL
 from ingest.garble_detect import is_garbled, UNTRANSLATABLE_PLACEHOLDER
 from ingest.mixed_lang_translate import translate_mixed_batch, _GREEK_CHAR
 from ingest.german_detect import is_german
@@ -158,7 +159,7 @@ def main():
                     help="llm: stage-aware local LLM (Ollama, pinned to this process's GPU) "
                          "for old vernacular documents NLLB cannot read -- only de/fr/it/nl/"
                          "pl/hu/ru documents are translated; see core/llm_translator.py")
-    ap.add_argument("--llm-model", default=os.environ.get("LATIN_TRANSLATE_MODEL", "gemma4:12b"),
+    ap.add_argument("--llm-model", default=os.environ.get("LATIN_TRANSLATE_MODEL", DEFAULT_CHAT_MODEL),
                     help="Ollama model for --engine llm")
     ap.add_argument("--redo", action="store_true",
                     help="also re-translate segments that already have a translation "

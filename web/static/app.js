@@ -771,7 +771,8 @@ function viewJobs() {
         ${gpuControl()}
         <label class="inline">summarizer
           <select data-opt="summary_model">
-            <option value="">default (gemma4:12b)</option>
+            <option value="">default (${esc(state.llmDefault || '…')}${
+              state.llmDefault && state.llmDefaultMissing ? ' — not installed!' : ''})</option>
             ${(state.llmModels || []).map(m =>
               `<option value="${esc(m.name)}" ${m.name === state.opts.summary_model ? 'selected' : ''}>
                  ${esc(m.name)} (${m.size_gb} GB)</option>`).join('')}
@@ -1103,6 +1104,8 @@ async function go(view) {
       state.llmModels = [];
       api('/api/llm/models').then(r => {
         state.llmModels = r.models || [];
+        state.llmDefault = r.default;
+        state.llmDefaultMissing = r.available && !r.default_installed;
         if (state.view === 'jobs' && !typing()) render();
       }).catch(() => {});
     }

@@ -165,7 +165,8 @@ python scripts/summarize.py --all --min-translated 0.9   # every mostly-translat
 python scripts/summarize.py --doc-id 397 --model qwen3:14b --source english
 ```
 
-It uses [Ollama](https://ollama.com) (default model `gemma4:12b`, plus
+It uses [Ollama](https://ollama.com) (default model `gemma3:12b`, set as
+`DEFAULT_CHAT_MODEL` in `core/local_llm.py`, plus
 `nomic-embed-text` for meaning search), but not the Ollama service you already
 run: each job starts a **private** `ollama serve` on a free port, pinned to the job's
 card, and shuts it down afterwards. Two things had to be right for that pinning to
