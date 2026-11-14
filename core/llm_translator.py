@@ -119,6 +119,16 @@ BRIEFINGS: Dict[Tuple[str, str], str] = {
     ("fr", "medieval"): (
         "Old/Middle French or a modern-French rendering of it. Keep the tone of the "
         "beast epic: Renart the fox, Isengrin the wolf, Noble the lion."),
+    ("la", "early_modern"): (
+        "Neo-Latin hexameter epic of the 15th-17th century, in imitation of Virgil, Statius and "
+        "Lucan (for example Basinio da Parma's Hesperis). The Latin is classical in grammar but "
+        "full of Virgilian echoes, epithets and periphrases: 'Tyrrhenum' = the Tyrrhenian sea or "
+        "coast, 'Martes' = war, 'Latina gens' = the Italians, 'Iberi' = Spaniards or Aragonese, "
+        "'Musa' = the Muse (a goddess, never Moses), 'Genitor' = the Father of the gods. Sentences "
+        "run on across line breaks, so read each line with its neighbours, but give each Latin "
+        "line its own English line and do not move words from one line to another. Keep names "
+        "of people and places in a recognisable English form; if a name is unfamiliar, keep the "
+        "Latin spelling rather than substituting a similar-sounding one."),
     ("la", "papyrus"): (
         "Latin documents written on papyrus, wooden tablets and potsherds (1st-7th c. AD): "
         "letters, receipts, army rosters and reports, contracts, deeds, court records. They "
@@ -200,6 +210,7 @@ _SCHEMA = {
 # later pass) can tell a reconstruction from a reading.
 UNCERTAIN = " [uncertain]"
 
+_MODE_SWITCH = re.compile(r"\s*/(?:no_)?think\b")
 _FOLIO = re.compile(r"\[[IVXLC]*\d*[rv]\]|\[[ivxlc]+[rv]?\]")
 
 # What a papyrus line too broken to translate becomes. Without this the model
@@ -324,7 +335,8 @@ class LLMTranslator(Translator):
         for e in entries:
             if not isinstance(e.get("n"), int):
                 continue
-            text = (e.get("english") or "").strip()
+            # qwen3 sometimes echoes its own "/no_think" mode switch into the answer.
+            text = _MODE_SWITCH.sub("", e.get("english") or "").strip()
             if not text:
                 continue          # a blank answer counts as missing: retry line by line
             if self.stage == "papyrus" and 1 <= e["n"] <= n and _echoes_fragment(chunk[e["n"] - 1], text):
@@ -343,6 +355,11 @@ class LLMTranslator(Translator):
                 self.uncertain += 1
             got[e["n"]] = text
         if set(got) != set(range(1, n + 1)):
+            return None
+        # A batch can come back with the right number of entries that are one merged
+        # paragraph repeated (seen on the Hesperis opening, 8 lines -> 1 sentence x 8).
+        # The count matches, so only this catches it; retry line by line instead.
+        if n >= 3 and len(set(got.values())) <= n // 2:
             return None
         return [got[k] for k in range(1, n + 1)]
 

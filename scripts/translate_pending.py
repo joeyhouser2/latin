@@ -35,6 +35,7 @@ import sentence_transformers  # noqa: F401  (import order: see harvest script)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline import Library
+from core import qc
 from core.local_llm import DEFAULT_CHAT_MODEL
 from ingest.garble_detect import is_garbled, UNTRANSLATABLE_PLACEHOLDER
 from ingest.mixed_lang_translate import translate_mixed_batch, _GREEK_CHAR, is_mostly_greek
@@ -119,6 +120,31 @@ def retranslate_german(lib, docs, args):
           f"{(time.time() - t_start) / 60:.1f} min.")
 
 
+def _print_sample(doc, pending, tr, model_label, args, allowed_names) -> None:
+    """The spot-check gate: translate a few runs of consecutive segments spread across
+    the work, show them with their quality flags, and write nothing.
+
+    Runs of consecutive lines (not single scattered ones) because the LLM engine reads
+    neighbouring lines as context, so a lone line would not show how it really performs."""
+    n = args.sample
+    run = min(8, n)
+    starts = sorted({int(i * max(len(pending) - run, 0) / max(n // run - 1, 1))
+                     for i in range(max(n // run, 1))})
+    picked = []
+    for st in starts:
+        picked.extend(pending[st:st + run])
+    picked = picked[:n]
+    eng = tr.translate_batch([s.latin_text for s in picked], batch_size=args.batch_size)
+    flags = qc.flag_batch([s.latin_text for s in picked], eng, allowed_names)
+    print(f"\n=== Sample of {len(picked)} / {len(pending):,} segments of [{doc.id}] "
+          f"{doc.title} -- {model_label} ===")
+    for s, e, f in zip(picked, eng, flags):
+        print(f"  {s.latin_text}\n    -> {e}" + (f"    [FLAGS: {f}]" if f else ""))
+    c = qc.summarize(flags)
+    print(f"\n  flagged {c['flagged']}/{c['checked']}: "
+          + (", ".join(f"{k} {v}" for k, v in c.items() if k not in ('checked', 'flagged')) or "none"))
+
+
 def _is_papyrus(doc) -> bool:
     """A Latin papyrus, tablet or ostracon from ingest/papyri.py (genre "... papyrus ...")."""
     return doc.language == "la" and "papyrus" in (doc.genre or "")
@@ -169,6 +195,14 @@ def main():
     ap.add_argument("--redo", action="store_true",
                     help="also re-translate segments that already have a translation "
                          "(clears their styled version); for replacing NLLB output with --engine llm")
+    ap.add_argument("--sample", type=int, default=0, metavar="N",
+                    help="spot-check gate: translate N segments spread evenly across each "
+                         "document, print Latin / English / quality flags side by side, and "
+                         "write NOTHING. Look at it before queueing the full run.")
+    ap.add_argument("--glossary", default="",
+                    help="text file of names, places and terms for the document (with --engine "
+                         "llm): added to the translator's briefing, and its capitalised words "
+                         "are exempt from the new_name quality flag")
     ap.add_argument("--batch-size", type=int, default=16, help="model batch size")
     ap.add_argument("--chunk", type=int, default=200,
                     help="segments per DB commit (resume granularity)")
@@ -195,10 +229,13 @@ def main():
     if args.engine == "llm":
         # Vernaculars, plus Latin papyri: NLLB loops on their Leiden brackets and
         # gaps, where an LLM briefed on the conventions reads them (core/llm_translator.py).
-        keep = [d for d in docs if d.language not in ("la", "grc") or _is_papyrus(d)]
+        # An explicitly named --doc-id is the exception: asking for one Latin work by
+        # id is the way to put a single poem through the LLM instead of NLLB.
+        keep = [d for d in docs if d.language not in ("la", "grc") or _is_papyrus(d)
+                or args.doc_id is not None]
         if len(keep) != len(docs):
-            print(f"--engine llm handles vernacular documents and Latin papyri only; "
-                  f"skipping {len(docs) - len(keep)} Latin/Greek document(s)")
+            print(f"--engine llm handles vernacular documents, Latin papyri and any Latin/Greek "
+                  f"work named with --doc-id; skipping {len(docs) - len(keep)} other document(s)")
         docs = keep
     if args.skip_done_elsewhere:
         # Fully translated on another machine, per the committed ledger
@@ -228,6 +265,7 @@ def main():
     print(f"=== Translate pending: {len(plan)} docs, {total:,} segments ===\n")
 
     grand = 0
+    flag_totals = {"checked": 0, "flagged": 0}
     t_start = time.time()
     server = None
     if args.engine == "llm":
@@ -239,12 +277,19 @@ def main():
             server.__exit__(None, None, None)
             raise SystemExit(f"model {args.llm_model!r} is not pulled in Ollama")
         print(f"LLM engine: {args.llm_model}")
+    glossary_text = ""
+    if args.glossary:
+        with open(args.glossary, encoding="utf-8") as fh:
+            glossary_text = fh.read().strip()
+    allowed_names = qc.load_glossary_names(glossary_text)
     for d, pending in plan:
         if server:
+            note = "\n".join(x for x in (d.translation_evidence, glossary_text) if x) or None
             tr = LLMTranslator(server.client, args.llm_model, d.language,
                                "papyrus" if _is_papyrus(d) else d.language_stage,
                                title=d.title, author=d.author, century=d.century,
-                               genre=d.genre, note=d.translation_evidence)
+                               genre=d.genre, note=note)
+            model_label = f"llm:{args.llm_model}"
             # Greek subscriptions, letters and glosses inside a Latin papyrus
             # get the Greek briefing (core/llm_translator.py, ("grc", "papyrus")).
             # One line per request, without CONTEXT lines: these lines are long and
@@ -252,14 +297,17 @@ def main():
             # numbered lines, and given context lines it translates those as well.
             greek_tr = (LLMTranslator(server.client, args.llm_model, "grc", "papyrus",
                                       title=d.title, author=d.author, century=d.century,
-                                      genre=d.genre, note=d.translation_evidence,
-                                      batch=1, context=0)
+                                      genre=d.genre, note=note, batch=1, context=0)
                         if _is_papyrus(d) else None)
         else:
             tr = lib.translator_for(d.language, d.language_stage)
+            model_label = f"nllb:{getattr(tr, 'model_name', 'unknown')}"
             greek_tr = None
         if hasattr(tr, "max_length"):
             tr.max_length = args.max_length
+        if args.sample:
+            _print_sample(d, pending, tr, model_label, args, allowed_names)
+            continue
         n = len(pending)
         t0 = time.time()
         done = 0
@@ -291,40 +339,65 @@ def main():
                       and s not in greek and is_german(s.latin_text)]
             pure = [s for s in clean if s not in mixed and s not in german and s not in greek]
 
+            # (segment, English, which translator wrote it): the third item is what
+            # lets a later pass retranslate only what one model produced.
             results = []
             if pure:
                 eng = tr.translate_batch([s.latin_text for s in pure],
                                          batch_size=args.batch_size)
-                results.extend(zip(pure, eng))
+                results.extend((s, e, model_label) for s, e in zip(pure, eng))
             if greek:
                 eng = greek_tr.translate_batch([s.latin_text for s in greek],
                                                batch_size=args.batch_size)
-                results.extend(zip(greek, eng))
+                results.extend((s, e, f"{model_label}+grc") for s, e in zip(greek, eng))
             if mixed:
                 eng = translate_mixed_batch([s.latin_text for s in mixed], tr,
                                             batch_size=args.batch_size)
-                results.extend(zip(mixed, eng))
+                results.extend((s, e, f"{model_label}+mixed") for s, e in zip(mixed, eng))
             if german:
                 gtr = lib.german_translator()
                 if hasattr(gtr, "max_length"):
                     gtr.max_length = args.max_length
                 eng = gtr.translate_batch([s.latin_text for s in german],
                                           batch_size=args.batch_size)
-                results.extend(zip(german, eng))
-            results.extend((s, UNTRANSLATABLE_PLACEHOLDER) for s in garbled)
-            lib.store.set_translations([(s.id, e) for s, e in results],
-                                       reset_styled=args.redo)
+                results.extend((s, e, "nllb:stock:deu_Latn") for s, e in zip(german, eng))
+            results.extend((s, UNTRANSLATABLE_PLACEHOLDER, "placeholder") for s in garbled)
+            by_model = {}
+            for s, e, m in results:
+                by_model.setdefault(m, []).append((s, e))
+            for m, items in by_model.items():
+                flags = ({s.id: f for (s, _), f in zip(items, qc.flag_batch(
+                    [s.latin_text for s, _ in items], [e for _, e in items], allowed_names))}
+                         if m != "placeholder" else {s.id: "" for s, _ in items})
+                lib.store.set_translations([(s.id, e) for s, e in items],
+                                           reset_styled=args.redo, model=m, flags=flags)
+                for f in flags.values():
+                    flag_totals["checked"] += 1
+                    if f:
+                        flag_totals["flagged"] += 1
+                        for one in f.split(","):
+                            flag_totals[one] = flag_totals.get(one, 0) + 1
             done += len(batch)
             grand += len(batch)
             rate = grand / max(time.time() - t_start, 1e-6)
             eta = (total - grand) / rate / 3600
             print(f"  [{d.id}] {(d.source or '')[:22]:22} {done:>6,}/{n:<6,} "
-                  f"| overall {grand:,}/{total:,} {rate:.1f} seg/s ETA {eta:.1f}h",
+                  f"| overall {grand:,}/{total:,} {rate:.1f} seg/s ETA {eta:.1f}h "
+                  f"| flagged {flag_totals['flagged']}/{flag_totals['checked']}",
                   flush=True)
         print(f"  [{d.id}] DONE {n} segs in {time.time()-t0:.0f}s", flush=True)
 
-    print(f"\nDone. Translated {grand:,} segments across {len(plan)} docs "
-          f"in {(time.time()-t_start)/3600:.1f}h.")
+    if args.sample:
+        print("\nSample only: nothing was written. Re-run without --sample to translate.")
+    else:
+        detail = ", ".join(f"{k} {v}" for k, v in sorted(flag_totals.items())
+                           if k not in ("checked", "flagged"))
+        print(f"\nDone. Translated {grand:,} segments across {len(plan)} docs "
+              f"in {(time.time()-t_start)/3600:.1f}h. Quality flags: "
+              f"{flag_totals['flagged']}/{flag_totals['checked']} segments flagged"
+              + (f" ({detail})" if detail else "") + ".")
+    if server:
+        server.__exit__(None, None, None)
     lib.close()
 
 
