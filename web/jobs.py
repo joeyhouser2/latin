@@ -180,6 +180,9 @@ def _translate_argv(p: Dict[str, Any]) -> List[str]:
     # "llm": vernaculars and Latin papyri through a local LLM (translate_pending.py)
     _flag(argv, "--engine", p.get("engine"))
     _flag(argv, "--llm-model", p.get("llm_model"))
+    _flag(argv, "--sample", p.get("sample"))      # spot-check gate: print, write nothing
+    _flag(argv, "--glossary", p.get("glossary"))  # names/terms briefing for the LLM
+    _flag(argv, "--redo", p.get("redo"))          # replace existing translations
     # Re-translate German editorial segments already translated as Latin
     # (see ingest/german_detect.py); leaves every other segment untouched.
     _flag(argv, "--retranslate-german", p.get("retranslate_german"))

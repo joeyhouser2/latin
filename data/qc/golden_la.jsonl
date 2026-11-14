@@ -1,0 +1,7 @@
+{"id": "hesperis-1", "latin": "Magnanimi dic, Musa, viri, qui fortibus ausis", "must": ["muse"], "forbid": ["moses"], "note": "Musa is the Muse (NLLB: 'O Moses')"}
+{"id": "hesperis-2", "latin": "Dispulit invectos tyrrhenum ad litus Iberos", "must": ["iberian", "tyrrhen"], "forbid": ["rebel"], "note": "Iberi = Iberians/Spaniards"}
+{"id": "hesperis-3", "latin": "Fas erat, externoque viros parere Tyranno.", "must": ["foreign"], "forbid": [], "note": "men obeying a foreign tyrant; NLLB gave gibberish"}
+{"id": "hesperis-4", "latin": "Infecto coeli tractu, morbumque famemque,", "must": ["famine"], "forbid": ["rabbit"], "note": "NLLB: 'Infected rabbits'"}
+{"id": "hesperis-5", "latin": "Quae duo terrificis evertunt cladibus urbes,", "must": ["cit"], "forbid": ["streets"], "note": "two things overthrow cities"}
+{"id": "hesperis-6", "latin": "Terribilisque venit nervo resonante sagitta.", "must": ["arrow"], "forbid": ["nerve,"], "note": "a terrible arrow comes, string twanging"}
+{"id": "augustine-1", "latin": "Quid est ergo tempus?", "must": ["time"], "forbid": ["ergo"], "note": "NLLB left 'ergo tempus' untranslated (Phase 0)"}

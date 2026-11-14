@@ -80,6 +80,11 @@ class Store:
         for col in ("english_styled", "style_label", "scansion"):
             if col not in seg_cols:
                 self.conn.execute(f"ALTER TABLE segments ADD COLUMN {col} TEXT")
+        # Provenance + quality of the machine translation (core/qc.py). NULL model =
+        # written before this was recorded, so unknown; NULL flags = never checked.
+        for col in ("translation_model", "translation_flags"):
+            if col not in seg_cols:
+                self.conn.execute(f"ALTER TABLE segments ADD COLUMN {col} TEXT")
         doc_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(documents)")}
         if "language" not in doc_cols:
             self.conn.execute(
@@ -167,16 +172,32 @@ class Store:
         )
         self.conn.commit()
 
-    def set_translations(self, pairs: Iterable[tuple], reset_styled: bool = False) -> None:
+    def set_translations(self, pairs: Iterable[tuple], reset_styled: bool = False,
+                         model: Optional[str] = None,
+                         flags: Optional[dict] = None) -> None:
         """Bulk-write (segment_id, english_text) pairs in one transaction.
 
         reset_styled=True also clears english_styled/style_label -- use it when
-        *re*-translating, since styling derived from the old English is stale."""
+        *re*-translating, since styling derived from the old English is stale.
+
+        model records which translator wrote these segments (e.g. "nllb:models/nllb-latin",
+        "llm:qwen3:14b"); flags maps segment_id -> comma-separated quality flags from
+        core/qc.py ("" = checked, clean). Both are left untouched when not given."""
         pairs = list(pairs)
         self.conn.executemany(
             "UPDATE segments SET english_text = ? WHERE id = ?",
             [(en, sid) for sid, en in pairs],
         )
+        if model is not None:
+            self.conn.executemany(
+                "UPDATE segments SET translation_model = ? WHERE id = ?",
+                [(model, sid) for sid, _ in pairs],
+            )
+        if flags is not None:
+            self.conn.executemany(
+                "UPDATE segments SET translation_flags = ? WHERE id = ?",
+                [(flags.get(sid, ""), sid) for sid, _ in pairs],
+            )
         if reset_styled:
             self.conn.executemany(
                 "UPDATE segments SET english_styled = NULL, style_label = NULL WHERE id = ?",
