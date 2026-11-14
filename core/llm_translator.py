@@ -189,6 +189,21 @@ def _echoes_fragment(source: str, english: str) -> bool:
     return sum(w in src for w in out) / len(out) >= 0.5
 
 
+def _copies_source(source: str, english: str) -> bool:
+    """True when a readable line came back as the Latin itself.
+
+    Name rosters legitimately survive translation almost unchanged, so the
+    caller retries once with a nudge and keeps the second answer either way."""
+    src = {w.lower() for w in _TOKEN.findall(source)}
+    out = [w.lower() for w in _TOKEN.findall(english)]
+    if len(src) < 4 or not out:
+        return False
+    return sum(w in src for w in out) / len(out) >= 0.6
+
+NUDGE = ("Your previous answer repeated the Latin. Give an English translation; "
+         "keep only personal and place names as they are.")
+
+
 def briefing_for(language: str, stage: str) -> str:
     for key in ((language, stage), (language, "*"), ("*", "*")):
         if key in BRIEFINGS:
@@ -255,10 +270,11 @@ class LLMTranslator(Translator):
         lines += [f"{n}. {clean(t)}" for n, t in enumerate(chunk, 1)]
         return "\n".join(lines)
 
-    def _ask(self, chunk: List[str], before: List[str]) -> Optional[List[str]]:
+    def _ask(self, chunk: List[str], before: List[str], nudge: bool = False) -> Optional[List[str]]:
         n = len(chunk)
+        user = self._user(chunk, before) + ("\n\n" + NUDGE if nudge else "")
         data = self.client.chat_json(
-            self.model, self.system, self._user(chunk, before), _SCHEMA,
+            self.model, self.system, user, _SCHEMA,
             num_ctx=self.num_ctx, temperature=0.2,
             num_predict=max(300, 220 * n), retries=1)
         got = {}
@@ -266,8 +282,19 @@ class LLMTranslator(Translator):
             if not isinstance(e.get("n"), int):
                 continue
             text = (e.get("english") or "").strip()
+            if not text:
+                continue          # a blank answer counts as missing: retry line by line
             if self.stage == "papyrus" and 1 <= e["n"] <= n and _echoes_fragment(chunk[e["n"] - 1], text):
                 text = FRAGMENT
+            elif self.stage == "papyrus" and 1 <= e["n"] <= n and not nudge \
+                    and _copies_source(chunk[e["n"] - 1], text):
+                try:
+                    again = self._ask([chunk[e["n"] - 1]], before, nudge=True)
+                except Exception:
+                    again = None
+                if again and again[0]:
+                    got[e["n"]] = again[0]
+                    continue
             if text and text != FRAGMENT and e.get("confidence") == "low":
                 text += UNCERTAIN
                 self.uncertain += 1
