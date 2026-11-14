@@ -135,6 +135,38 @@ BRIEFINGS: Dict[Tuple[str, str], str] = {
         "(iii Idus Septembres = 11 September); 'n(umero)' = in number, 'd(enarios)' = "
         "denarii, 'v(ir) c(larissimus)' and similar are titles. A line that is mostly gaps "
         "may come out as a few words and …; that is correct."),
+    ("grc", "papyrus"): (
+        "Greek passages inside Latin documents on papyrus, tablets and potsherds (1st-7th c. "
+        "AD), mostly from Roman and Byzantine Egypt and 6th-century Ravenna: Greek "
+        "subscriptions and signatures under Latin deeds and receipts, Greek letters and "
+        "accounts, dockets, and bilingual school texts. They are printed in a modern edition "
+        "with the Leiden conventions, and here square brackets are NOT folio marks: [abc] = "
+        "letters lost and restored by the editor (translate them; they are the best reading); "
+        "[...] or [---] = text lost, and '...' inside a word = illegible letters; for both, "
+        "write … in the English at that point and never guess what was there; (abc) = an "
+        "abbreviation the editor expanded (read the full word); ⟦abc⟧ = deleted by the "
+        "scribe (leave out); <abc> = letters the scribe left out. Three kinds of text occur. "
+        "(1) Koine Greek, spelled as it was pronounced: ι/ει/η/οι/υ interchange (itacism), "
+        "αι for ε, ο for ω, iota adscript dropped or misplaced, γ before ι dropped. Formulae: "
+        "'χαίρειν' = greetings, 'ἔρρωσο' / 'ἐρρῶσθαί σε εὔχομαι' = farewell / I pray for "
+        "your health, 'ἄδελφε', 'κύριέ μου' are courteous address, not always kin; 'ἔγραψα "
+        "ὑπὲρ αὐτοῦ μὴ εἰδότος γράμματα' = I wrote for him, since he does not know letters; "
+        "'σεσημείωμαι' = I have signed; 'ἀπέχω' = I have received; 'ὁμολογῶ' = I acknowledge. "
+        "Dates by regnal year of the emperor ((ἔτους) or L = year) and Egyptian months "
+        "(Thoth, Phaophi, Hathyr, Choiak, Tybi, Mecheir, Phamenoth, Pharmouthi, Pachon, Payni, "
+        "Epeiph, Mesore) or indiction. Money and measures: drachmas, obols, talents, artabas, "
+        "arouras, 'νομισμάτιον' = solidus. Latin army and office words appear in Greek "
+        "letters (κεντυρίων centurion, λεγεών legion, οὐετρανός veteran, πραιπόσιτος "
+        "praepositus). (2) Latin written in Greek letters, as in the Ravenna witnesses' "
+        "subscriptions: 'σολιδος' = solidos, 'τραδιτος βιδι' = traditos vidi (I saw them "
+        "handed over), 'πρεσεντι' = praesenti, 'β(ιρ) κ(λαρισσιμος)' = v(ir) c(larissimus). "
+        "Read these as Latin and translate the Latin. (3) Bilingual school texts, where a "
+        "Latin word or phrase is followed by its Greek equivalent (a word-for-word glossed "
+        "Virgil or Cicero): translate the passage once, not each word twice. Latin words "
+        "mixed into a line are part of it; translate them too. Translate only what is "
+        "written: a line of names stays a line of names, and you never add a greeting or "
+        "phrase that is not in the Greek. A line that is mostly gaps may come out as a few "
+        "words and …; that is correct."),
     ("*", "*"): (
         "A medieval or early-modern vernacular whose spelling is not standardised. Read "
         "through variant spellings and archaic grammar to the intended sense."),
@@ -200,7 +232,7 @@ def _copies_source(source: str, english: str) -> bool:
         return False
     return sum(w in src for w in out) / len(out) >= 0.6
 
-NUDGE = ("Your previous answer repeated the Latin. Give an English translation; "
+NUDGE = ("Your previous answer repeated the {language_name}. Give an English translation; "
          "keep only personal and place names as they are.")
 
 
@@ -272,13 +304,24 @@ class LLMTranslator(Translator):
 
     def _ask(self, chunk: List[str], before: List[str], nudge: bool = False) -> Optional[List[str]]:
         n = len(chunk)
-        user = self._user(chunk, before) + ("\n\n" + NUDGE if nudge else "")
+        nudge_text = NUDGE.format(language_name=LANGUAGES.get(self.language, self.language))
+        user = self._user(chunk, before) + ("\n\n" + nudge_text if nudge else "")
         data = self.client.chat_json(
             self.model, self.system, user, _SCHEMA,
             num_ctx=self.num_ctx, temperature=0.2,
             num_predict=max(300, 220 * n), retries=1)
+        entries = [e for e in data.get("translations", []) if isinstance(e, dict)]
+        if n == 1 and not before and len(entries) > 1:
+            # Asked for one long line, the model sometimes answers in several numbered
+            # pieces (a sentence each). With no context lines to confuse them with,
+            # they can only be parts of that line: join them in order.
+            parts = sorted((e for e in entries if isinstance(e.get("n"), int)), key=lambda e: e["n"])
+            conf = [e.get("confidence") for e in parts]
+            entries = [{"n": 1,
+                        "english": " ".join((e.get("english") or "").strip() for e in parts).strip(),
+                        "confidence": "low" if "low" in conf else "medium" if "medium" in conf else "high"}]
         got = {}
-        for e in data.get("translations", []):
+        for e in entries:
             if not isinstance(e.get("n"), int):
                 continue
             text = (e.get("english") or "").strip()

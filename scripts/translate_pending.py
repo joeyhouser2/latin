@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pipeline import Library
 from core.local_llm import DEFAULT_CHAT_MODEL
 from ingest.garble_detect import is_garbled, UNTRANSLATABLE_PLACEHOLDER
-from ingest.mixed_lang_translate import translate_mixed_batch, _GREEK_CHAR
+from ingest.mixed_lang_translate import translate_mixed_batch, _GREEK_CHAR, is_mostly_greek
 from ingest.german_detect import is_german
 
 
@@ -245,8 +245,19 @@ def main():
                                "papyrus" if _is_papyrus(d) else d.language_stage,
                                title=d.title, author=d.author, century=d.century,
                                genre=d.genre, note=d.translation_evidence)
+            # Greek subscriptions, letters and glosses inside a Latin papyrus
+            # get the Greek briefing (core/llm_translator.py, ("grc", "papyrus")).
+            # One line per request, without CONTEXT lines: these lines are long and
+            # run on into each other, so in a batch the model moves words between
+            # numbered lines, and given context lines it translates those as well.
+            greek_tr = (LLMTranslator(server.client, args.llm_model, "grc", "papyrus",
+                                      title=d.title, author=d.author, century=d.century,
+                                      genre=d.genre, note=d.translation_evidence,
+                                      batch=1, context=0)
+                        if _is_papyrus(d) else None)
         else:
             tr = lib.translator_for(d.language, d.language_stage)
+            greek_tr = None
         if hasattr(tr, "max_length"):
             tr.max_length = args.max_length
         n = len(pending)
@@ -269,18 +280,26 @@ def main():
             # (recovered by ingest/page_splice.py's re-OCR pipeline -- see
             # ingest/mixed_lang_translate.py for why those go through a
             # separate, safer path rather than the plain translator).
-            mixed = [s for s in clean if d.language == "la" and _GREEK_CHAR.search(s.latin_text)]
+            # In a papyrus, a mostly-Greek segment is translated whole as Greek:
+            # the mixed path would strip it down to a name or two.
+            greek = [s for s in clean if greek_tr and is_mostly_greek(s.latin_text)]
+            mixed = [s for s in clean if d.language == "la" and s not in greek
+                     and _GREEK_CHAR.search(s.latin_text)]
             # German editorial apparatus (see ingest/german_detect.py) goes
             # to stock NLLB as German; the Latin model mangles it.
             german = [s for s in clean if d.language == "la" and s not in mixed
-                      and is_german(s.latin_text)]
-            pure = [s for s in clean if s not in mixed and s not in german]
+                      and s not in greek and is_german(s.latin_text)]
+            pure = [s for s in clean if s not in mixed and s not in german and s not in greek]
 
             results = []
             if pure:
                 eng = tr.translate_batch([s.latin_text for s in pure],
                                          batch_size=args.batch_size)
                 results.extend(zip(pure, eng))
+            if greek:
+                eng = greek_tr.translate_batch([s.latin_text for s in greek],
+                                               batch_size=args.batch_size)
+                results.extend(zip(greek, eng))
             if mixed:
                 eng = translate_mixed_batch([s.latin_text for s in mixed], tr,
                                             batch_size=args.batch_size)

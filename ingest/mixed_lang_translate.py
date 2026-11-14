@@ -29,6 +29,25 @@ from typing import List, Tuple
 
 _GREEK_CHAR = re.compile(r"[Ͱ-Ͽἀ-῿]")
 _RUN_RE = re.compile(r"[Ͱ-Ͽἀ-῿]+|[^Ͱ-Ͽἀ-῿]+")
+_LETTER = re.compile(r"[^\W\d_]")
+
+
+def greek_share(text: str) -> float:
+    """Fraction of the letters in ``text`` that are Greek (0.0 when no letters)."""
+    letters = _LETTER.findall(text)
+    if not letters:
+        return 0.0
+    return sum(1 for c in letters if _GREEK_CHAR.match(c)) / len(letters)
+
+
+def is_mostly_greek(text: str, threshold: float = 0.5) -> bool:
+    """True when Greek letters make up more than ``threshold`` of the text.
+
+    Such a segment has too little Latin left for translate_mixed_batch to work
+    on: stripping the Greek leaves a name or two, and an LLM asked to translate
+    that invents a sentence ("I greet you, my brother"). It needs translating
+    as Greek."""
+    return greek_share(text) > threshold
 
 
 def split_runs(text: str) -> List[Tuple[str, str]]:
